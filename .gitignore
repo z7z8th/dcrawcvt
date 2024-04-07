@@ -1,2 +1,8 @@
-dcrawcvt.o
+*.o
+*.rgb
+*.png
+*.jpeg
+*.jpg
+*.yuv
+
 dcrawcvt
