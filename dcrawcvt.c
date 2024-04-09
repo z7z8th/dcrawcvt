@@ -14,7 +14,7 @@ char * read_file(char *path, size_t *rsize)
     char *buf = calloc(1, size);
     ssize_t nread = fread(buf, size, 1, fd);
     if (nread != 1) {
-        printf("read error %lld\n", nread);
+        fprintf(stderr, "read error %zd\n", nread);
         free(buf);
         return NULL;
     }
@@ -26,33 +26,59 @@ void write_file(char *path, char *buf, size_t size)
 {
     FILE *fd = fopen(path, "w+b");
     if (fwrite(buf, size, 1,fd) != 1) {
-        printf("write file error ", strerror(errno));
+        printf("write file error %s\n", strerror(errno));
     }
 }
 
-#define RAW(row, col)   buf[w*row + col]
+#define RAW(row, col)   buf[w*(h-row) + col]
 
 void dcraw_to_rgb(char *buf, int w, int h, char *rgb_buf)
 {
+    printf("dcraw_to_rgb\n");
+
     for(int row = 2; row < h-2; row++) {
         for (int col = 2; col < w-2; col++) {
             int off = (w*row + col)*3;
-            rgb_buf[off] = (RAW(row,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row+2,col+2))>>2;
-            rgb_buf[off+1] = (RAW(row,col) + RAW(row+1,col) + RAW(row+1,col+2) + RAW(row+2,col+1))>>2;
-            rgb_buf[off+2] = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+            float r, g, b;
+
+            if (!(row & 1)&&!(col & 1)) {  // RGGB r pos
+                r = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+                g = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                b = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+            }
+            else if ((row & 1)&&(col & 1)) {  // b pos
+                r = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+                g = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                b = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+            } else { // g pos
+                g = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
+                if (!(row&1)) {
+                    r = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    b = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                } else {
+                    b = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    r = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                }
+            }
+            // printf("off %d r %f g %f b %f\n", off, r, g, b);
+            rgb_buf[off] = r;
+            rgb_buf[off+1] = g;
+            rgb_buf[off+2] = b;
         }
     }
 }
-
+#if 0
 void dcraw_to_uyvy(unsigned char *buf, int w, int h, char *yuv_buf)
 {
     float sCb = 128, sCr = 128;
     for(int row = 2; row < h-2; row++) {
         for (int col = 2; col < w-2; col++) {
             int off = (w*row + col)*2;
-            float r = (RAW(row,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row+2,col+2))>>2;
-            float g = (RAW(row,col+1) + RAW(row+1,col) + RAW(row+1,col+2) + RAW(row+2,col+1))>>2;
-            float b = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+            int base_row = row & ~1;
+            int base_col = col & ~1;
+            float r = (RAW(base_row,base_col) + RAW(base_row,base_col+2) + RAW(base_row+2,base_col) + RAW(base_row+2,base_col+2))>>2;
+            float g = (RAW(base_row,base_col+1) + RAW(base_row+1,base_col) + RAW(base_row+1,base_col+2) + RAW(base_row+2,base_col+1))>>2;
+            float b = (RAW(base_row-1,base_col-1) + RAW(base_row-1,base_col+1) + RAW(base_row+1,base_col-1) + RAW(base_row+1,base_col+1))>>2;
             //ITU-R BT.709
             float y = 16 + 0.183*r + 0.614*g + 0.062*b;
             float cb = 128 - 0.101*r - 0.339*g + 0.439*b;
@@ -63,38 +89,70 @@ void dcraw_to_uyvy(unsigned char *buf, int w, int h, char *yuv_buf)
                 yuv_buf[off+2] = sCr = cr;
             } else {
                 yuv_buf[off+1] = y;
-                yuv_buf[off-2] = (sCb + cb)/2;
-                yuv_buf[off] = (sCr + cr)/2;
+                yuv_buf[off-2] = sCb = (sCb + cb)/2;
+                yuv_buf[off] = sCr = (sCr + cr)/2;
             }
         }
     }
 }
+#endif
 
-void dcraw_to_yuyv(unsigned char *buf, int w, int h, char *yuv_buf)
+void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
 {
-    float sCb = 128, sCr = 128;
+    printf("dcraw_to_yuyv\n");
+
     for(int row = 2; row < h-2; row++) {
         for (int col = 2; col < w-2; col++) {
+            float sCb = 128, sCr = 128;
             int off = (w*row + col)*2;
-            float r = (RAW(row,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row+2,col+2))/4;
-            float g = (RAW(row,col+1) + RAW(row+1,col) + RAW(row+1,col+2) + RAW(row+2,col+1))/4;
-            float b = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-            // printf("off %d r %f g %f b %f\n", off, r, g, b);
-            // exit(0);
-            //ITU-R BT.709
-            float y = 16 + 0.183*r + 0.614*g + 0.062*b;
-            float cb = 128 - 0.101*r - 0.339*g + 0.439*b;
-            float cr = 128 + 0.439*r - 0.399*g - 0.040*b;
-            // printf("off %d y %f cb %f cr %f\n", off, y, cb, cr);
+            float R, G, B;
 
-            if (off&1 == 0) {
-                yuv_buf[off] = y;
-                yuv_buf[off+1] = sCb = cb;
-                yuv_buf[off+3] = sCr = cr;
+            if (!(row & 1)&&!(col & 1)) {  // RGGB R pos
+                R = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+            }
+            else if ((row & 1)&&(col & 1)) {  // B pos
+                R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                B = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+            } else { // G pos
+                G = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
+                if (!(row&1)) {
+                    R = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    B = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                } else {
+                    B = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    R = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                }
+            }
+            // printf("off %d R %f G %f B %f\n", off, R, G, B);
+            // exit(0);
+            float Y, Cb, Cr;
+            #if 1 // 
+            //ITU-R BT.709
+            Y = 16 + 0.183*R + 0.614*G + 0.062*B;
+            Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
+            Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
+            #elif 0
+             Y = (0.257 * R) + (0.504 * G) + (0.098 * B) + 16;
+             Cr = (0.439 * R) - (0.368 * G) - (0.071 * B) + 128;
+             Cb = -(0.148 * R) - (0.291 * G) + (0.439 * B) + 128;
+            #else //wikipedia
+            Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B;
+            Cb = 128 -0.09991*R - 0.33609*G + 0.436*B;
+            Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B;
+            #endif
+            // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
+
+            if ((off&1) == 0) {
+                yuv_buf[off] = Y;
+                yuv_buf[off+1] = sCb = Cb;
+                yuv_buf[off+3] = sCr = Cr;
             } else {
-                yuv_buf[off] = y;
-                yuv_buf[off-1] = (sCb + cb)/2;
-                yuv_buf[off+1] = (sCr + cr)/2;
+                yuv_buf[off] = Y;
+                yuv_buf[off-1] = sCb = (sCb + Cb)/2;
+                yuv_buf[off+1] = sCr = (sCr + Cr)/2;
             }
             // if (off >10000)
             // exit(0);
@@ -103,12 +161,12 @@ void dcraw_to_yuyv(unsigned char *buf, int w, int h, char *yuv_buf)
 }
 
 // TODO: char * or unsigned char*?
-void dcraw_to_yuv(int debayer_pattern, int w, int h, char *infile, char *outfile)
+void dcraw_to_color(int debayer_pattern, int w, int h, char *infile, char *outfile)
 {
     size_t insize = 0;
     char *buf = read_file(infile, &insize);
     if (insize < w*h) {
-        printf("input file is truncated? intput file size %ld wxh %ld\n", insize, w*h);
+        printf("input file is truncated? intput file size %ld wxh %d\n", insize, w*h);
         exit(EXIT_FAILURE);
     }
 #ifdef TO_RGB
@@ -182,7 +240,7 @@ int main(int argc, char *argv[])
     }
     printf("output file = %s\n", argv[optind+1]);
 
-    dcraw_to_yuv(debayer_pattern, w, h, argv[optind], argv[optind+1]);
+    dcraw_to_color(debayer_pattern, w, h, argv[optind], argv[optind+1]);
 
     exit(EXIT_SUCCESS);
 }
