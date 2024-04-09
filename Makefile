@@ -16,9 +16,14 @@ torgb: dcrawcvt
 	convert -depth 8 -size 1920x1080+0 rgb:a.rgb a.png
 	open a.png
 
+touyvy: CFLAGS+=-DTO_UYVY
+touyvy: dcrawcvt
+	./dcrawcvt -g 1920x1080 $(RAW_FILE) a.yuv
+	convert -depth 8 -colorspace YUV -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
+	open a.png
+
 toyuv: dcrawcvt
 	./dcrawcvt -g 1920x1080 $(RAW_FILE) a.yuv
-	#convert -depth 8 -colorspace YUV -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
 	open a.yuv
 
 clean:

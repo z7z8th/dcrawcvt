@@ -67,34 +67,71 @@ void dcraw_to_rgb(char *buf, int w, int h, char *rgb_buf)
         }
     }
 }
-#if 0
-void dcraw_to_uyvy(unsigned char *buf, int w, int h, char *yuv_buf)
+#ifdef TO_UYVY
+
+void dcraw_to_uyvy(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
 {
-    float sCb = 128, sCr = 128;
+    printf("dcraw_to_uyvy\n");
+
     for(int row = 2; row < h-2; row++) {
         for (int col = 2; col < w-2; col++) {
+            float sCb = 128, sCr = 128;
             int off = (w*row + col)*2;
-            int base_row = row & ~1;
-            int base_col = col & ~1;
-            float r = (RAW(base_row,base_col) + RAW(base_row,base_col+2) + RAW(base_row+2,base_col) + RAW(base_row+2,base_col+2))>>2;
-            float g = (RAW(base_row,base_col+1) + RAW(base_row+1,base_col) + RAW(base_row+1,base_col+2) + RAW(base_row+2,base_col+1))>>2;
-            float b = (RAW(base_row-1,base_col-1) + RAW(base_row-1,base_col+1) + RAW(base_row+1,base_col-1) + RAW(base_row+1,base_col+1))>>2;
-            //ITU-R BT.709
-            float y = 16 + 0.183*r + 0.614*g + 0.062*b;
-            float cb = 128 - 0.101*r - 0.339*g + 0.439*b;
-            float cr = 128 + 0.439*r - 0.399*g - 0.040*b;
-            if (off&1 == 0) {
-                yuv_buf[off+1] = y;
-                yuv_buf[off] = sCb = cb;
-                yuv_buf[off+2] = sCr = cr;
-            } else {
-                yuv_buf[off+1] = y;
-                yuv_buf[off-2] = sCb = (sCb + cb)/2;
-                yuv_buf[off] = sCr = (sCr + cr)/2;
+            float R, G, B;
+
+            if (!(row & 1)&&!(col & 1)) {  // RGGB R pos
+                R = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
             }
+            else if ((row & 1)&&(col & 1)) {  // B pos
+                R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
+                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
+                B = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
+            } else { // G pos
+                G = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
+                if (!(row&1)) {
+                    R = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    B = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                } else {
+                    B = (RAW(row,col-1) + RAW(row,col+1))>>1;
+                    R = (RAW(row-1,col) + RAW(row+1,col))>>1;
+                }
+            }
+            // printf("off %d R %f G %f B %f\n", off, R, G, B);
+            // exit(0);
+            float Y, Cb, Cr;
+            #if 0 // 
+            //ITU-R BT.709
+            Y = 16 + 0.183*R + 0.614*G + 0.062*B;
+            Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
+            Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
+            #elif 1 // Microsoft
+             Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
+             Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
+             Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
+            #else //wikipedia
+            Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B;
+            Cb = 128 -0.09991*R - 0.33609*G + 0.436*B;
+            Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B;
+            #endif
+            // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
+
+            if ((off&1) == 0) {
+                yuv_buf[off+1] = Y;
+                yuv_buf[off] = sCb = Cb;
+                yuv_buf[off+2] = sCr = Cr;
+            } else {
+                yuv_buf[off+1] = Y;
+                yuv_buf[off-2] = sCb = (sCb + Cb)/2;
+                yuv_buf[off] = sCr = (sCr + Cr)/2;
+            }
+            // if (off >10000)
+            // exit(0);
         }
     }
 }
+
 #endif
 
 void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
@@ -134,10 +171,10 @@ void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
             Y = 16 + 0.183*R + 0.614*G + 0.062*B;
             Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
             Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
-            #elif 0
-             Y = (0.257 * R) + (0.504 * G) + (0.098 * B) + 16;
-             Cr = (0.439 * R) - (0.368 * G) - (0.071 * B) + 128;
-             Cb = -(0.148 * R) - (0.291 * G) + (0.439 * B) + 128;
+            #elif 0 // Microsoft
+            Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
+            Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
+            Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
             #else //wikipedia
             Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B;
             Cb = 128 -0.09991*R - 0.33609*G + 0.436*B;
@@ -178,8 +215,11 @@ void dcraw_to_color(int debayer_pattern, int w, int h, char *infile, char *outfi
 #else
     char *yuv_buf = malloc(insize * 2);
     memset(yuv_buf, 0, insize*2);
-
+#   if defined(TO_UYVY)
+    dcraw_to_uyvy(buf, w, h, yuv_buf);
+#   else
     dcraw_to_yuyv(buf, w, h, yuv_buf);
+#   endif
     write_file(outfile, yuv_buf, insize * 2);
 #endif
 }
