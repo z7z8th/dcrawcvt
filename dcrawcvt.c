@@ -4,14 +4,41 @@
 #include <unistd.h>
 #include <string.h>
 
-char * read_file(char *path, size_t *rsize)
+#define SQR(x) ((x) * (x))
+#define ABS(x) (((int)(x) ^ ((int)(x) >> 31)) - ((int)(x) >> 31))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define LIM(x, min, max) MAX(min, MIN(x, max))
+#define ULIM(x, y, z) ((y) < (z) ? LIM(x, y, z) : LIM(x, z, y))
+#define CLIP(x) LIM((int)(x), 0, 65535)
+#define SWAP(a, b) \
+    {              \
+        a = a + b; \
+        b = a - b; \
+        a = a - b; \
+    }
+
+#define FMT_PLANAR 0x80
+#define FMT_PLANAR_UV_INTERLEAVED 0x40
+
+#define FMT_YUYV   0
+#define FMT_UYVY   1
+#define FMT_RGB    4
+#define FMT_YUVP   FMT_PLANAR
+#define FMT_YUVPI  (FMT_PLANAR | FMT_PLANAR_UV_INTERLEAVED)
+#define FMT_YUV422  FMT_YUYV
+#define FMT_PAL     FMT_UYVY
+
+int endian_fix = 0;
+
+unsigned char * read_file(char *path, size_t *rsize)
 {
     FILE *fd = fopen(path, "rb");
     fseek(fd, 0, SEEK_END);
     long size = ftell(fd);
     fseek(fd, 0, SEEK_SET);
     printf("path %s size %ld\n", path, size);
-    char *buf = calloc(1, size);
+    unsigned char *buf = calloc(1, size);
     ssize_t nread = fread(buf, size, 1, fd);
     if (nread != 1) {
         fprintf(stderr, "read error %zd\n", nread);
@@ -22,7 +49,18 @@ char * read_file(char *path, size_t *rsize)
     return buf;
 }
 
-void write_file(char *path, char *buf, size_t size)
+void fix_endian(unsigned char *buf, int width, int height)
+{
+    unsigned char temp[8];
+    for(int off = 0; off < width*height; off+=8) {
+        memcpy(temp, buf+off, 8);
+        for (int i=0; i<8; i++){
+            buf[off+i] = temp[7-i];
+        }
+    }
+}
+
+void write_file(char *path, unsigned char *buf, size_t size)
 {
     FILE *fd = fopen(path, "w+b");
     if (fwrite(buf, size, 1,fd) != 1) {
@@ -30,10 +68,10 @@ void write_file(char *path, char *buf, size_t size)
     }
 }
 
-#define RAW(row, col)   ((float)buf[width*row + col])
+// WARN: don not miss the () around row!!!
+#define RAW(row, col)   ((float)buf[width*(row) + (col)])
 
-#ifdef TO_RGB
-void bilinear_interpolate_rgb(char *buf, int width, int height, char *rgb_buf)
+void bilinear_interpolate_rgb(unsigned char *buf, int width, int height, unsigned char *rgb_buf)
 {
     printf("bilinear_interpolate_rgb\n");
 
@@ -64,9 +102,12 @@ void bilinear_interpolate_rgb(char *buf, int width, int height, char *rgb_buf)
             } else {
                 R = G = B = 128;
             }
+            R = LIM(R, 0, 255);
+            G = LIM(G, 0, 255);
+            B = LIM(B, 0, 255);
+
             // if (!(row & 1))
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
-
 
             int off = (width*(height-1-row) + col)*3;
             // printf("off %d r %f g %f b %f\n", off, R, G, B);
@@ -76,79 +117,17 @@ void bilinear_interpolate_rgb(char *buf, int width, int height, char *rgb_buf)
         }
     }
 }
-#endif
 
-#ifdef TO_UYVY
-void bilinear_interpolate_uyvy(unsigned char *buf, int width, int height, unsigned char *yuv_buf)
-{
-    printf("bilinear_interpolate_uyvy\n");
-
-    for(int row = 2; row < height-2; row++) {
-        for (int col = 2; col < width-2; col++) {
-            float sCb = 128, sCr = 128;
-            int off = (width*row + col)*2;
-            float R, G, B;
-
-            if (!(row & 1)&&!(col & 1)) {  // RGGB R pos
-                R = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-            }
-            else if ((row & 1)&&(col & 1)) {  // B pos
-                R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                B = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-            } else { // G pos
-                G = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
-                if (!(row&1)) {
-                    R = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    B = (RAW(row-1,col) + RAW(row+1,col))>>1;
-                } else {
-                    B = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    R = (RAW(row-1,col) + RAW(row+1,col))>>1;
-                }
-            }
-            // printf("off %d R %f G %f B %f\n", off, R, G, B);
-            // exit(0);
-            float Y, Cb, Cr;
-            #if 0 // 
-            //ITU-R BT.709
-            Y = 16 + 0.183*R + 0.614*G + 0.062*B;
-            Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
-            Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
-            #elif 1 // Microsoft
-             Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
-             Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
-             Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
-            #else //wikipedia
-            Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B;
-            Cb = 128 -0.09991*R - 0.33609*G + 0.436*B;
-            Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B;
-            #endif
-            // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
-
-            if ((off&1) == 0) {
-                yuv_buf[off+1] = Y;
-                yuv_buf[off] = sCb = Cb;
-                yuv_buf[off+2] = sCr = Cr;
-            } else {
-                yuv_buf[off+1] = Y;
-                yuv_buf[off-2] = sCb = (sCb + Cb)/2;
-                yuv_buf[off] = sCr = (sCr + Cr)/2;
-            }
-            // if (off >10000)
-            // exit(0);
-        }
-    }
-}
-
-#endif
-
-void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsigned char *yuv_buf)
+void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsigned char *yuv_buf, int ofmt)
 {
     printf("bilinear_interpolate_yuyv\n");
-    
 
+    int planar_u_base, planar_v_base;
+    if (ofmt & FMT_PLANAR) {
+        planar_u_base = width * height;
+        planar_v_base = planar_u_base*3/2;
+    }
+    
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
             float sCb = 128, sCr = 128;
@@ -178,6 +157,10 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
             } else {
                 R = G = B = 128;
             }
+            R = LIM(R, 0, 255);
+            G = LIM(G, 0, 255);
+            B = LIM(B, 0, 255);
+
             // if (!(row & 1))
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
 
@@ -191,55 +174,79 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
             Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
             Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
             Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
-            #else //wikipedia
-            Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B;
-            Cb = 128 -0.09991*R - 0.33609*G + 0.436*B;
-            Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B;
+            #else // wikipedia, white may show as black
+            Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B, 255;
+            Cb = 128 -0.09991*R - 0.33609*G + 0.436*B, 255;
+            Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B, 255;
             #endif
             // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
+            Y = LIM(Y, 0, 255);
+            Cb = LIM(Cb, 0, 255);
+            Cr = LIM(Cr, 0, 255);
 
-            int off = (width*(height-1-row) + col)*2;
-
-            if (!(col&1)) {
-                yuv_buf[off] = Y;
-                yuv_buf[off+1] = sCb = Cb;
-                yuv_buf[off+3] = sCr = Cr;
+            if (!(ofmt & FMT_PLANAR)) {
+                int off = (width*(height-1-row) + col)*2;
+                if (ofmt == FMT_YUYV) {
+                    yuv_buf[off] = Y;
+                    yuv_buf[off-1+!(col&1)*2] = (sCb + Cb)/2;
+                    yuv_buf[off+1+!(col&1)*2] = (sCr + Cr)/2;
+                } else if (ofmt == FMT_UYVY) {
+                    yuv_buf[off+1] = Y;
+                    yuv_buf[off-2+!(col&1)*2] = (sCb + Cb)/2;
+                    yuv_buf[off+!(col&1)*2] = (sCr + Cr)/2;
+                } else {
+                    printf("unrecognized format 0x%x\n", ofmt);
+                    exit(EXIT_FAILURE);
+                }
             } else {
+                int off = (width*(height-1-row) + col);
                 yuv_buf[off] = Y;
-                yuv_buf[off-1] = (sCb + Cb)/2;
-                yuv_buf[off+1] = (sCr + Cr)/2;
+                if (!(ofmt & FMT_PLANAR_UV_INTERLEAVED)) {
+                    if (!(col&1)) {
+                        yuv_buf[planar_u_base+off/2] = sCb = Cb;
+                        yuv_buf[planar_v_base+off/2] = sCr = Cr;
+                    } else {
+                        yuv_buf[planar_u_base+off/2] = (sCb + Cb)/2;
+                        yuv_buf[planar_v_base+off/2] = (sCr + Cr)/2;
+                    }
+                } else {
+                    if (!(col&1)) {
+                        yuv_buf[planar_u_base+off] = sCb = Cb;
+                        yuv_buf[planar_u_base+off+1] = sCr = Cr;
+                    } else {
+                        yuv_buf[planar_u_base+off-1] = (sCb + Cb)/2;
+                        yuv_buf[planar_u_base+off] = (sCr + Cr)/2;
+                    }
+                }
+                
             }
-            // if (off >10000)
-            // exit(0);
         }
     }
 }
 
 // TODO: char * or unsigned char*?
-void bilinear_interpolate_color(int debayer_pattern, int width, int height, char *infile, char *outfile)
+void bilinear_interpolate_color(int debayer_pattern, int width, int height, char *infile, char *outfile, int ofmt)
 {
     size_t insize = 0;
-    char *buf = read_file(infile, &insize);
+    unsigned char *buf = read_file(infile, &insize);
     if (insize < width*height) {
         printf("input file is truncated? intput file size %ld wxh %d\n", insize, width*height);
         exit(EXIT_FAILURE);
     }
-#ifdef TO_RGB
-    char *rgb_buf = malloc(insize * 3);
-    memset(rgb_buf, 0xff, insize*3);
+    if(endian_fix)
+        fix_endian(buf, width, height);
+    if (ofmt == FMT_RGB) {
+        unsigned char *rgb_buf = malloc(insize * 3);
+        memset(rgb_buf, 0xff, insize*3);
 
-    bilinear_interpolate_rgb(buf, width, height, rgb_buf);
-    write_file(outfile, rgb_buf, insize * 3);
-#else
-    char *yuv_buf = malloc(insize * 2);
-    memset(yuv_buf, 0, insize*2);
-#   if defined(TO_UYVY)
-    bilinear_interpolate_uyvy(buf, width, height, yuv_buf);
-#   else
-    bilinear_interpolate_yuyv(buf, width, height, yuv_buf);
-#   endif
-    write_file(outfile, yuv_buf, insize * 2);
-#endif
+        bilinear_interpolate_rgb(buf, width, height, rgb_buf);
+        write_file(outfile, rgb_buf, insize * 3);
+    } else {
+        unsigned char *yuv_buf = malloc(insize * 2);
+        memset(yuv_buf, 0, insize*2);
+        bilinear_interpolate_yuyv(buf, width, height, yuv_buf, ofmt);
+        write_file(outfile, yuv_buf, insize * 2);
+    }
 }
 
 void parse_geometry(char *gstr, int *width, int *height)
@@ -249,14 +256,35 @@ void parse_geometry(char *gstr, int *width, int *height)
     }
 }
 
+int parse_format(char *str)
+{
+    if (!strcmp(str, "YUYV") || !strcmp(str, "YUV422") || !strcmp(str, "YUY2")) {
+        return FMT_YUYV;
+    }
+    if (!strcmp(str, "YUVP")) {
+        return FMT_YUVP;
+    }
+    if (!strcmp(str, "YUVPI")) {
+        return FMT_YUVPI;
+    }
+    if (!strcmp(str, "UYVY") || !strcmp(str, "PAL")) {
+        return FMT_UYVY;
+    }
+    if (!strcmp(str, "RGB")) {
+        return FMT_RGB;
+    }
+    printf("unknown format %s, default to YUYV/YUV422\n", str);
+    return FMT_YUYV;
+}
+
 void usage(char* argv[])
 {
-    fprintf(stderr, "Usage: %s [-r raw_bit_width] [-d debayer_pattern] -g WxH [-t to_format] input_file output_file\n"
+    fprintf(stderr, "Usage: %s [-r raw_bit_width] [-d debayer_pattern] -g WxH [-f output_format] [-e] input_file output_file\n"
                     "-r raw_bit_width       8/10/12\n"
                     "-d debayer_pattern     RGGB(default)|BGGR|GRBG|GBRG\n"
                     "-g WxH                 input image geometry width and height\n"
-                    "-t to_format           output format: YUV422, default YUV422\n"
-                    "",
+                    "-f output_format       output format: YUV422/YUYV/YUY2(default,packed), YUVP(planar), YUVPI(planar uv interleaved), UYVY/PAL, RGB(24 bits)\n"
+                    "-e                     endian fix, reverse every 8 bytes",
                         argv[0]);
     exit(EXIT_FAILURE);
 }
@@ -264,18 +292,30 @@ void usage(char* argv[])
 int main(int argc, char *argv[])
 {
     int opt;
+    int raw_bit_width = 8;
     int debayer_pattern = 0;
     int width = 0, height = 0;
+    int output_format = 0;
 
-    while ((opt = getopt(argc, argv, "d:g:")) != -1)
+    while ((opt = getopt(argc, argv, "r:d:g:f:e")) != -1)
     {
         switch (opt)
         {
+        case 'r':
+            raw_bit_width = atoi(optarg);
+            break;
         case 'd':
             debayer_pattern = 0;  // TODO: parse pattern
             break;
         case 'g':
             parse_geometry(optarg, &width, &height);
+            break;
+        case 'f':
+            output_format = parse_format(optarg);
+            printf("output format %d\n", output_format);
+            break;
+        case 'e':
+            endian_fix = 1;
             break;
         default: /* '?' */
             usage(argv);
@@ -298,7 +338,7 @@ int main(int argc, char *argv[])
     }
     printf("output file = %s\n", argv[optind+1]);
 
-    bilinear_interpolate_color(debayer_pattern, width, height, argv[optind], argv[optind+1]);
+    bilinear_interpolate_color(debayer_pattern, width, height, argv[optind], argv[optind+1], output_format);
 
     exit(EXIT_SUCCESS);
 }
