@@ -29,6 +29,24 @@
 #define FMT_YUV422  FMT_YUYV
 #define FMT_PAL     FMT_UYVY
 
+// WARN: don not miss the () around row!!!
+#define RAW(row, col)   ((float)raw_buf[width*(row) + (col)])
+
+// simplified from dcraw code
+// 0/1/2/3 = R/G1/B/G2, to simplify G1=G2=1
+#define FILTERS_RG   0x94
+#define FILTERS_GB   0x49
+#define FILTERS_GR   0x61
+#define FILTERS_BG   0x16
+
+unsigned filters_map[4] = {FILTERS_RG, FILTERS_GB, FILTERS_GR, FILTERS_BG};
+
+#define RAWC_RED    0
+#define RAWC_GREEN  1
+#define RAWC_BLUE   2
+
+#define FC(row, col)  (filters >> (((((row) & 1) << 1) + ((col) & 1)) << 1) & 3)
+
 int endian_fix = 0;
 
 unsigned char * read_file(char *path, size_t *rsize)
@@ -38,40 +56,37 @@ unsigned char * read_file(char *path, size_t *rsize)
     long size = ftell(fd);
     fseek(fd, 0, SEEK_SET);
     printf("path %s size %ld\n", path, size);
-    unsigned char *buf = calloc(1, size);
-    ssize_t nread = fread(buf, size, 1, fd);
+    unsigned char *raw_buf = calloc(1, size);
+    ssize_t nread = fread(raw_buf, size, 1, fd);
     if (nread != 1) {
         fprintf(stderr, "read error %zd\n", nread);
-        free(buf);
+        free(raw_buf);
         return NULL;
     }
     *rsize = size;
-    return buf;
+    return raw_buf;
 }
 
-void fix_endian(unsigned char *buf, int width, int height)
+void fix_endian(unsigned char *raw_buf, int width, int height)
 {
     unsigned char temp[8];
     for(int off = 0; off < width*height; off+=8) {
-        memcpy(temp, buf+off, 8);
+        memcpy(temp, raw_buf+off, 8);
         for (int i=0; i<8; i++){
-            buf[off+i] = temp[7-i];
+            raw_buf[off+i] = temp[7-i];
         }
     }
 }
 
-void write_file(char *path, unsigned char *buf, size_t size)
+void write_file(char *path, unsigned char *raw_buf, size_t size)
 {
     FILE *fd = fopen(path, "w+b");
-    if (fwrite(buf, size, 1,fd) != 1) {
+    if (fwrite(raw_buf, size, 1,fd) != 1) {
         printf("write file error %s\n", strerror(errno));
     }
 }
 
-// WARN: don not miss the () around row!!!
-#define RAW(row, col)   ((float)buf[width*(row) + (col)])
-
-void bilinear_interpolate_rgb(unsigned char *buf, int width, int height, unsigned char *rgb_buf)
+void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, unsigned char *rgb_buf)
 {
     printf("bilinear_interpolate_rgb\n");
 
@@ -118,7 +133,78 @@ void bilinear_interpolate_rgb(unsigned char *buf, int width, int height, unsigne
     }
 }
 
-void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsigned char *yuv_buf, int ofmt)
+void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned filters, unsigned char (*hbuf)[4], unsigned char (*vbuf)[4])
+{
+    // top and bottom border
+    int hrow = 0;
+    for (int row = 0; row < height; row+=2, hrow+=2) {
+        if (row == 4) {
+            row = height - 3;
+            hrow = 3;
+        }
+        // printf("row %d hrow %d\n", row, hrow);
+        for (int col = 0; col < width; col+=2) {
+            int base_row = row & ~1;
+            int base_col = col & ~1;
+            unsigned char *pix = hbuf[hrow*width + col];
+            for (int i=0; i<4; i++) {
+                int c = filters>>i & 3;
+                pix[c] = RAW(base_row+(i>>1), base_col+(i&1));
+                // printf("pix[%d] = %d\n", c, pix[c]);
+            }
+        }
+    }
+    for (hrow=0; hrow < 6; hrow++) {
+        if (hrow != 1 && hrow != 4) {
+            for (int col = 1; col < width; col+=2) {
+                for(int c=0; c<4; c++)
+                    hbuf[hrow*width + col][c] = LIM(((float)hbuf[hrow*width + col + 1][c] + (float)hbuf[hrow*width + col - 1][c])/2, 0, 255);
+            }
+        }
+    }
+    for (hrow=1; hrow < 6; hrow+=3) {
+        for (int col = 0; col < width; col+=1) {
+            for(int c=0; c<4; c++)
+                hbuf[hrow*width + col][c] = LIM(((float)hbuf[(hrow-1)*width + col][c] + (float)hbuf[(hrow+1)*width + col][c])/2, 0, 255);
+        }
+    }
+
+    // left and right border
+    int hcol = 0;
+    for (int col = 0; col < width; col+=2, hcol+=2) {
+        if (col == 4) {
+            col = width - 3;
+            hcol = 3;
+        }
+        for (int row = 0; row < height; row+=2) {
+            int base_row = row & ~1;
+            int base_col = col & ~1;
+            unsigned char *pix = vbuf[row + hcol*height];
+            for (int i=0; i<4; i++) {
+                int c = filters>>i & 3;
+                pix[c] = RAW(base_row+(i>>1), base_col+(i&1));
+            }
+        }
+    }
+    for (hcol=0; hcol < 6; hcol++) {
+        if (hcol != 1 && hcol != 4) {
+            for (int row = 1; row < height; row+=2) {
+                for(int c=0; c<4; c++)
+                    vbuf[hcol*height + row][c] = LIM(((float)vbuf[hcol*height + row + 1][c] + (float)vbuf[hcol*height + row - 1][c])/2, 0, 255);
+            }
+        }
+    }
+    for (hcol=1; hcol < 6; hcol+=3) {
+        for (int row = 0; row < height; row+=1) {
+            for(int c=0; c<4; c++)
+                vbuf[hcol*height + row][c] = LIM(((float)vbuf[(hcol-1)*height + row][c] + (float)vbuf[(hcol+1)*height + row][c])/2, 0, 255);
+        }
+    }
+    // /border
+    
+}
+
+void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, unsigned filters, unsigned char *yuv_buf, int ofmt)
 {
     printf("bilinear_interpolate_yuyv\n");
 
@@ -128,23 +214,30 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
         planar_v_base = planar_u_base*3/2;
     }
     
+    // gen border bayer image
+    unsigned char (*hbuf)[4] = calloc(6, width*4);
+    unsigned char (*vbuf)[4] = calloc(6, height*4);
+
+    border_interpolate(raw_buf, width, height, filters, hbuf, vbuf);
+
+    // main area
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
             float sCb = 128, sCr = 128;
 
             float R, G, B;
-            R = G = B = 128;
 
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
-                if (!(row & 1) && !(col & 1)) {  // RGGB R pos
+                int fc = FC(row, col);
+                if (fc == RAWC_RED) {  // RGGB R pos
                     R = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
                     G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
                     B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-                } else if ((row & 1) && (col & 1)) {  // B pos
+                } else if (fc == RAWC_BLUE) {  // RGGB B pos
                     R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
                     G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
                     B = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
-                } else { // G pos
+                } else { // RGGB G pos
                     G = (RAW(row, col)*2 + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/6;
                     if (!(row&1)) {
                         R = (RAW(row,col-1) + RAW(row,col+1))/2;
@@ -155,7 +248,26 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
                     }
                 }
             } else {
-                R = G = B = 128;
+                // border
+                // R = G = B = 128;
+                unsigned char *pix;
+                if (row < 2) {
+                    pix = hbuf[row*width + col];
+                } else if (row >= height - 2) {
+                    pix = hbuf[(row - height + 6)*width + col];
+                } else if (col < 2) {
+                    pix = vbuf[row + col*height];
+                } else if (col >= width -  2) {
+                    pix = vbuf[row + (col - width + 6)*height];
+                }
+
+                R = pix[RAWC_RED];
+                G = pix[RAWC_GREEN];
+                B = pix[RAWC_BLUE];
+
+                // if (row < 1)
+                    // printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
+                // exit(0);
             }
             R = LIM(R, 0, 255);
             G = LIM(G, 0, 255);
@@ -179,21 +291,32 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
             Cb = 128 -0.09991*R - 0.33609*G + 0.436*B, 255;
             Cr = 128 + 0.615*R - 0.55861*G - 0.05639*B, 255;
             #endif
-            // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
             Y = LIM(Y, 0, 255);
             Cb = LIM(Cb, 0, 255);
             Cr = LIM(Cr, 0, 255);
+            // if (row > 1917)
+            //     printf("[%d,%d] Y %f Cb %f Cr %f\n", row, col, Y, Cb, Cr);
 
             if (!(ofmt & FMT_PLANAR)) {
                 int off = (width*(height-1-row) + col)*2;
                 if (ofmt == FMT_YUYV) {
                     yuv_buf[off] = Y;
-                    yuv_buf[off-1+!(col&1)*2] = (sCb + Cb)/2;
-                    yuv_buf[off+1+!(col&1)*2] = (sCr + Cr)/2;
+                    if (!(col&1)) {
+                        yuv_buf[off+1] = sCb = Cb;
+                        yuv_buf[off+3] = sCr = Cr;
+                    } else {
+                        yuv_buf[off-1] = (sCb + Cb)/2;
+                        yuv_buf[off+1] = (sCr + Cr)/2;
+                    }
                 } else if (ofmt == FMT_UYVY) {
                     yuv_buf[off+1] = Y;
-                    yuv_buf[off-2+!(col&1)*2] = (sCb + Cb)/2;
-                    yuv_buf[off+!(col&1)*2] = (sCr + Cr)/2;
+                    if (!(col&1)) {
+                        yuv_buf[off] = sCb = Cb;
+                        yuv_buf[off+2] = sCr = Cr;
+                    } else {
+                        yuv_buf[off-2] = (sCb + Cb)/2;
+                        yuv_buf[off] = (sCr + Cr)/2;
+                    }
                 } else {
                     printf("unrecognized format 0x%x\n", ofmt);
                     exit(EXIT_FAILURE);
@@ -222,31 +345,55 @@ void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsign
             }
         }
     }
+
+    free(hbuf);
+    free(vbuf);
 }
 
-// TODO: char * or unsigned char*?
-void bilinear_interpolate_color(int debayer_pattern, int width, int height, char *infile, char *outfile, int ofmt)
+void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *infile, char *outfile, int ofmt)
 {
     size_t insize = 0;
-    unsigned char *buf = read_file(infile, &insize);
+    unsigned char *raw_buf = read_file(infile, &insize);
     if (insize < width*height) {
         printf("input file is truncated? intput file size %ld wxh %d\n", insize, width*height);
         exit(EXIT_FAILURE);
     }
+
     if(endian_fix)
-        fix_endian(buf, width, height);
+        fix_endian(raw_buf, width, height);
+
     if (ofmt == FMT_RGB) {
         unsigned char *rgb_buf = malloc(insize * 3);
         memset(rgb_buf, 0xff, insize*3);
-
-        bilinear_interpolate_rgb(buf, width, height, rgb_buf);
+        bilinear_interpolate_rgb(raw_buf, width, height, rgb_buf);
         write_file(outfile, rgb_buf, insize * 3);
+        free(rgb_buf);
     } else {
         unsigned char *yuv_buf = malloc(insize * 2);
         memset(yuv_buf, 0, insize*2);
-        bilinear_interpolate_yuyv(buf, width, height, yuv_buf, ofmt);
+        bilinear_interpolate_yuyv(raw_buf, width, height, filters_map[bayer_pattern], yuv_buf, ofmt);
         write_file(outfile, yuv_buf, insize * 2);
+        free(yuv_buf);
     }
+    free(raw_buf);
+}
+
+int parse_bayer_pattern(char *str)
+{
+    if (strlen(str) < 2)
+        goto err;
+    if (str[0] == 'R')  // RG
+        return 0;
+    if (str[0] == 'B')  // BG
+        return 3;
+    if (str[1] == 'B')  // GB
+        return 1;
+    if (str[1] == 'R')  // GR
+        return 2;
+
+err:
+    printf("parse bayer pattern %s error, use default\n", str);
+    return 0;
 }
 
 void parse_geometry(char *gstr, int *width, int *height)
@@ -279,13 +426,13 @@ int parse_format(char *str)
 
 void usage(char* argv[])
 {
-    fprintf(stderr, "Usage: %s [-r raw_bit_width] [-d debayer_pattern] -g WxH [-f output_format] [-e] input_file output_file\n"
+    fprintf(stderr, "Usage: %s [-r raw_bit_width] [-b bayer_pattern] -g WxH [-f output_format] [-e] input_file output_file\n"
                     "-r raw_bit_width       8/10/12\n"
-                    "-d debayer_pattern     RGGB(default)|BGGR|GRBG|GBRG\n"
+                    "-b bayer_pattern       RG(default)|GB|GR|BG\n"
                     "-g WxH                 input image geometry width and height\n"
-                    "-f output_format       output format: YUV422/YUYV/YUY2(default,packed), YUVP(planar), YUVPI(planar uv interleaved), UYVY/PAL, RGB(24 bits)\n"
+                    "-f output_format       output format: YUV422/YUYV/YUY2(default,packed), YUVP(planar), YUVPI(planar uv interleaved), UYVY/PAL(packed), RGB(24 bits)\n"
                     "-e                     endian fix, reverse every 8 bytes",
-                        argv[0]);
+                    argv[0]);
     exit(EXIT_FAILURE);
 }
 
@@ -293,26 +440,25 @@ int main(int argc, char *argv[])
 {
     int opt;
     int raw_bit_width = 8;
-    int debayer_pattern = 0;
+    int bayer_pattern = 0;
     int width = 0, height = 0;
     int output_format = 0;
 
-    while ((opt = getopt(argc, argv, "r:d:g:f:e")) != -1)
+    while ((opt = getopt(argc, argv, "r:b:g:f:e")) != -1)
     {
         switch (opt)
         {
         case 'r':
             raw_bit_width = atoi(optarg);
             break;
-        case 'd':
-            debayer_pattern = 0;  // TODO: parse pattern
+        case 'b':
+            bayer_pattern = parse_bayer_pattern(optarg);
             break;
         case 'g':
             parse_geometry(optarg, &width, &height);
             break;
         case 'f':
             output_format = parse_format(optarg);
-            printf("output format %d\n", output_format);
             break;
         case 'e':
             endian_fix = 1;
@@ -322,7 +468,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    printf("debayer pattern %d w %d h %d\n", debayer_pattern, width, height);
+    printf("debayer pattern %d w\n", bayer_pattern);
+    printf("w %d h %d\n", width, height);
+    printf("output format %d\n", output_format);
 
     if (optind >= argc)
     {
@@ -338,7 +486,7 @@ int main(int argc, char *argv[])
     }
     printf("output file = %s\n", argv[optind+1]);
 
-    bilinear_interpolate_color(debayer_pattern, width, height, argv[optind], argv[optind+1], output_format);
+    bilinear_interpolate_color(bayer_pattern, width, height, argv[optind], argv[optind+1], output_format);
 
     exit(EXIT_SUCCESS);
 }

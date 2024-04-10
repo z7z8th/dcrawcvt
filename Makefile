@@ -11,27 +11,27 @@ dcrawcvt: dcrawcvt.o
 #	gcc -g -O2 -o $@ $<
 
 torgb: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f RGB $(and $(FIX_ENDIAN),-e) $(RAW_FILE) a.rgb
+	./dcrawcvt -g 1920x1080 -f RGB -b $(or $(BAYER),RG) $(and $(FIX_ENDIAN),-e) $(RAW_FILE) a.rgb
 	convert -depth 8 -size 1920x1080+0 rgb:a.rgb a.png
 	open a.png
 
 touyvy: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f UYVY $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f UYVY -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
 	open a.png
 topal: touyvy
 
 toyuyv: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUYV $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	open a.yuv
 toyuv422:toyuyv
 
 toyuvp: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVP $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVP -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	open a.yuv
 
 toyuvpi: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVPI $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVPI -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	open a.yuv
 
 clean:

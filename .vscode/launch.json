@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/dcrawcvt",
             // "args": ["-q", "2", "../raw-images/CRW_7673.CRW"],
-            "args": [ "-g", "1920x1080", "../1920_1080_raw8_r12_0x1fa400_fixed.raw", "a.rgb"],
+            "args": [ "-g", "1920x1080", "-b", "RG", "../1920_1080_raw8_r12_0x1fa400_fixed.raw", "a.rgb"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
