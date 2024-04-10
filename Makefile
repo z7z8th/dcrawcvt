@@ -1,4 +1,4 @@
-RAW_FILE=../1920_1080_raw8_r12_0x1fa400_fixed.raw
+RAW_FILE ?= ../1920_1080_raw8_r12_0x1fa400_fixed.raw
 # RAW_FILE=../1920_1080_raw8_r12_0x1fa400.raw
 # RAW_FILE=../1920_1080_raw8_pg_P2_0x1fa400.raw
 
