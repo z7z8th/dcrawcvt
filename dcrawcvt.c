@@ -30,53 +30,63 @@ void write_file(char *path, char *buf, size_t size)
     }
 }
 
-#define RAW(row, col)   buf[w*(h-row) + col]
+#define RAW(row, col)   ((float)buf[width*row + col])
 
-void dcraw_to_rgb(char *buf, int w, int h, char *rgb_buf)
+#ifdef TO_RGB
+void bilinear_interpolate_rgb(char *buf, int width, int height, char *rgb_buf)
 {
-    printf("dcraw_to_rgb\n");
+    printf("bilinear_interpolate_rgb\n");
 
-    for(int row = 2; row < h-2; row++) {
-        for (int col = 2; col < w-2; col++) {
-            int off = (w*row + col)*3;
-            float r, g, b;
+    for(int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+            float R, G, B;
+            R = G = B = 128;
 
-            if (!(row & 1)&&!(col & 1)) {  // RGGB r pos
-                r = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-                g = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                b = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-            }
-            else if ((row & 1)&&(col & 1)) {  // b pos
-                r = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-                g = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                b = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-            } else { // g pos
-                g = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
-                if (!(row&1)) {
-                    r = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    b = (RAW(row-1,col) + RAW(row+1,col))>>1;
-                } else {
-                    b = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    r = (RAW(row-1,col) + RAW(row+1,col))>>1;
+            if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
+                if (!(row & 1) && !(col & 1)) {  // RGGB R pos
+                    R = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
+                    B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
+                } else if ((row & 1) && (col & 1)) {  // B pos
+                    R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
+                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
+                    B = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                } else { // G pos
+                    G = (RAW(row, col)*2 + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/6;
+                    if (!(row&1)) {
+                        R = (RAW(row,col-1) + RAW(row,col+1))/2;
+                        B = (RAW(row-1,col) + RAW(row+1,col))/2;
+                    } else {
+                        B = (RAW(row,col-1) + RAW(row,col+1))/2;
+                        R = (RAW(row-1,col) + RAW(row+1,col))/2;
+                    }
                 }
+            } else {
+                R = G = B = 128;
             }
-            // printf("off %d r %f g %f b %f\n", off, r, g, b);
-            rgb_buf[off] = r;
-            rgb_buf[off+1] = g;
-            rgb_buf[off+2] = b;
+            // if (!(row & 1))
+            //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
+
+
+            int off = (width*(height-1-row) + col)*3;
+            // printf("off %d r %f g %f b %f\n", off, R, G, B);
+            rgb_buf[off] = R;
+            rgb_buf[off+1] = G;
+            rgb_buf[off+2] = B;
         }
     }
 }
+#endif
+
 #ifdef TO_UYVY
-
-void dcraw_to_uyvy(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
+void bilinear_interpolate_uyvy(unsigned char *buf, int width, int height, unsigned char *yuv_buf)
 {
-    printf("dcraw_to_uyvy\n");
+    printf("bilinear_interpolate_uyvy\n");
 
-    for(int row = 2; row < h-2; row++) {
-        for (int col = 2; col < w-2; col++) {
+    for(int row = 2; row < height-2; row++) {
+        for (int col = 2; col < width-2; col++) {
             float sCb = 128, sCr = 128;
-            int off = (w*row + col)*2;
+            int off = (width*row + col)*2;
             float R, G, B;
 
             if (!(row & 1)&&!(col & 1)) {  // RGGB R pos
@@ -134,37 +144,43 @@ void dcraw_to_uyvy(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
 
 #endif
 
-void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
+void bilinear_interpolate_yuyv(unsigned char *buf, int width, int height, unsigned char *yuv_buf)
 {
-    printf("dcraw_to_yuyv\n");
+    printf("bilinear_interpolate_yuyv\n");
+    
 
-    for(int row = 2; row < h-2; row++) {
-        for (int col = 2; col < w-2; col++) {
+    for(int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
             float sCb = 128, sCr = 128;
-            int off = (w*row + col)*2;
-            float R, G, B;
 
-            if (!(row & 1)&&!(col & 1)) {  // RGGB R pos
-                R = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-            }
-            else if ((row & 1)&&(col & 1)) {  // B pos
-                R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))>>2;
-                G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))>>2;
-                B = (RAW(row, col) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/5;
-            } else { // G pos
-                G = (RAW(row, col) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/5;
-                if (!(row&1)) {
-                    R = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    B = (RAW(row-1,col) + RAW(row+1,col))>>1;
-                } else {
-                    B = (RAW(row,col-1) + RAW(row,col+1))>>1;
-                    R = (RAW(row-1,col) + RAW(row+1,col))>>1;
+            float R, G, B;
+            R = G = B = 128;
+
+            if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
+                if (!(row & 1) && !(col & 1)) {  // RGGB R pos
+                    R = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
+                    B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
+                } else if ((row & 1) && (col & 1)) {  // B pos
+                    R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
+                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
+                    B = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                } else { // G pos
+                    G = (RAW(row, col)*2 + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/6;
+                    if (!(row&1)) {
+                        R = (RAW(row,col-1) + RAW(row,col+1))/2;
+                        B = (RAW(row-1,col) + RAW(row+1,col))/2;
+                    } else {
+                        B = (RAW(row,col-1) + RAW(row,col+1))/2;
+                        R = (RAW(row-1,col) + RAW(row+1,col))/2;
+                    }
                 }
+            } else {
+                R = G = B = 128;
             }
-            // printf("off %d R %f G %f B %f\n", off, R, G, B);
-            // exit(0);
+            // if (!(row & 1))
+            //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
+
             float Y, Cb, Cr;
             #if 1 // 
             //ITU-R BT.709
@@ -182,14 +198,16 @@ void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
             #endif
             // printf("off %d Y %f Cb %f Cr %f\n", off, Y, Cb, Cr);
 
-            if ((off&1) == 0) {
+            int off = (width*(height-1-row) + col)*2;
+
+            if (!(col&1)) {
                 yuv_buf[off] = Y;
                 yuv_buf[off+1] = sCb = Cb;
                 yuv_buf[off+3] = sCr = Cr;
             } else {
                 yuv_buf[off] = Y;
-                yuv_buf[off-1] = sCb = (sCb + Cb)/2;
-                yuv_buf[off+1] = sCr = (sCr + Cr)/2;
+                yuv_buf[off-1] = (sCb + Cb)/2;
+                yuv_buf[off+1] = (sCr + Cr)/2;
             }
             // if (off >10000)
             // exit(0);
@@ -198,35 +216,35 @@ void dcraw_to_yuyv(unsigned char *buf, int w, int h, unsigned char *yuv_buf)
 }
 
 // TODO: char * or unsigned char*?
-void dcraw_to_color(int debayer_pattern, int w, int h, char *infile, char *outfile)
+void bilinear_interpolate_color(int debayer_pattern, int width, int height, char *infile, char *outfile)
 {
     size_t insize = 0;
     char *buf = read_file(infile, &insize);
-    if (insize < w*h) {
-        printf("input file is truncated? intput file size %ld wxh %d\n", insize, w*h);
+    if (insize < width*height) {
+        printf("input file is truncated? intput file size %ld wxh %d\n", insize, width*height);
         exit(EXIT_FAILURE);
     }
 #ifdef TO_RGB
     char *rgb_buf = malloc(insize * 3);
     memset(rgb_buf, 0xff, insize*3);
 
-    dcraw_to_rgb(buf, w, h, rgb_buf);
+    bilinear_interpolate_rgb(buf, width, height, rgb_buf);
     write_file(outfile, rgb_buf, insize * 3);
 #else
     char *yuv_buf = malloc(insize * 2);
     memset(yuv_buf, 0, insize*2);
 #   if defined(TO_UYVY)
-    dcraw_to_uyvy(buf, w, h, yuv_buf);
+    bilinear_interpolate_uyvy(buf, width, height, yuv_buf);
 #   else
-    dcraw_to_yuyv(buf, w, h, yuv_buf);
+    bilinear_interpolate_yuyv(buf, width, height, yuv_buf);
 #   endif
     write_file(outfile, yuv_buf, insize * 2);
 #endif
 }
 
-void parse_geometry(char *gstr, int *w, int *h)
+void parse_geometry(char *gstr, int *width, int *height)
 {
-    if(sscanf(gstr, "%dx%d", w, h) != 2) {
+    if(sscanf(gstr, "%dx%d", width, height) != 2) {
         printf("parse gemoetry failed\n");
     }
 }
@@ -247,7 +265,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     int debayer_pattern = 0;
-    int w = 0, h = 0;
+    int width = 0, height = 0;
 
     while ((opt = getopt(argc, argv, "d:g:")) != -1)
     {
@@ -257,14 +275,14 @@ int main(int argc, char *argv[])
             debayer_pattern = 0;  // TODO: parse pattern
             break;
         case 'g':
-            parse_geometry(optarg, &w, &h);
+            parse_geometry(optarg, &width, &height);
             break;
         default: /* '?' */
             usage(argv);
         }
     }
 
-    printf("debayer pattern %d w %d h %d\n", debayer_pattern, w, h);
+    printf("debayer pattern %d w %d h %d\n", debayer_pattern, width, height);
 
     if (optind >= argc)
     {
@@ -280,7 +298,7 @@ int main(int argc, char *argv[])
     }
     printf("output file = %s\n", argv[optind+1]);
 
-    dcraw_to_color(debayer_pattern, w, h, argv[optind], argv[optind+1]);
+    bilinear_interpolate_color(debayer_pattern, width, height, argv[optind], argv[optind+1]);
 
     exit(EXIT_SUCCESS);
 }

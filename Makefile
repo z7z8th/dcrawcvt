@@ -22,7 +22,7 @@ touyvy: dcrawcvt
 	convert -depth 8 -colorspace YUV -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
 	open a.png
 
-toyuv: dcrawcvt
+toyuyv: dcrawcvt
 	./dcrawcvt -g 1920x1080 $(RAW_FILE) a.yuv
 	open a.yuv
 
