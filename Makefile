@@ -51,6 +51,9 @@ tomjpeg: dcrawcvt
 	time ./dcrawcvt -g 1920x1080 -f MJPEG -b $(or $(BAYER),RG) $(RAW_FILE) a.jpeg
 	$(OPEN) a.jpeg
 
+perf: dcrawcvt
+	perf record -- ./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+
 clean:
 	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png
 	-@rm -vf dcrawcvt
