@@ -31,7 +31,7 @@ touyvy: dcrawcvt
 topal: touyvy
 
 toyuyv: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	time ./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	$(OPEN) a.yuv
 toyuv422:toyuyv
 
@@ -44,7 +44,7 @@ toyuvpi: dcrawcvt
 	$(OPEN) a.yuv
 
 tomjpeg: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f MJPEG -b $(or $(BAYER),RG) $(RAW_FILE) a.jpeg
+	time ./dcrawcvt -g 1920x1080 -f MJPEG -b $(or $(BAYER),RG) $(RAW_FILE) a.jpeg
 	$(OPEN) a.jpeg
 
 clean:
