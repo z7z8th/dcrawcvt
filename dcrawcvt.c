@@ -37,6 +37,7 @@
 
 // WARN: don not miss the () around row!!!
 #define RAW(row, col)   ((int)raw_buf[width*(row) + (col)])
+#define RAWI(off)   ((int)raw_buf[off])
 
 // simplified from dcraw code
 // 0/1/2/3 = R/G1/B/G2, to simplify G1=G2=1
@@ -239,6 +240,24 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
 
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
                 int fc = FC(row, col);
+                int off = width * row + col;
+                if (fc == RAWC_GREEN){ // RGGB G pos
+                    R = (RAWI(off-1) + RAWI(off+1))>>1;
+                    B = (RAWI(off-width) + RAWI(off+width))>>1;
+                    // TODO: verify x4 in current pos
+                    G = ((RAWI(off)<<2) + RAWI(off-width-1) + RAWI(off-width+1) + RAWI(off+width+1) + RAWI(off+width-1))>>3;
+                    if (row&1)
+                        SWAP(R, B);
+                } else {
+                    // TODO: verify x4 in current pos
+                    R = ((RAWI(off)<<2) + RAWI(off-width*2) + RAWI(off+2) + RAWI(off+width*2) + RAWI(off-2))>>3;
+                    B = (RAWI(off-width-1) + RAWI(off-width+1) + RAWI(off+width-1) + RAWI(off+width+1))>>2;
+                    G = (RAWI(off-1) + RAWI(off-width) + RAWI(off+1) + RAWI(off+width))>>2;
+                    if (fc == RAWC_BLUE)
+                        SWAP(R, B);
+                }
+#if 0
+                // original interplate pos
                 if (fc == RAWC_GREEN){ // RGGB G pos
                     R = (RAW(row,col-1) + RAW(row,col+1))/2;
                     B = (RAW(row-1,col) + RAW(row+1,col))/2;
@@ -254,6 +273,7 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
                     if (fc == RAWC_BLUE)
                         SWAP(R, B);
                 }
+#endif
             } else {
                 // border
 #ifndef NO_BORDER_INTERPOLATE
