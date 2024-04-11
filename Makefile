@@ -48,9 +48,7 @@ tomjpeg: dcrawcvt
 	$(OPEN) a.jpeg
 
 clean:
-	-@rm -vf a.yuv
-	-@rm -vf a.rgb
-	-@rm -vf a.png
+	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png
 	-@rm -vf dcrawcvt
 	-@rm -vf *.o
 	-@rm -vf *.exe
