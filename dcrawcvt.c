@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <string.h>
 
+#define TJE_IMPLEMENTATION
+#include "tiny_jpeg.h"
+
 #define SQR(x) ((x) * (x))
 #define ABS(x) (((int)(x) ^ ((int)(x) >> 31)) - ((int)(x) >> 31))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -18,14 +21,16 @@
         a = a - b; \
     }
 
-#define FMT_PLANAR 0x80
-#define FMT_PLANAR_UV_INTERLEAVED 0x40
+#define FMT_YUV                       0x8000
+#define FMT_YUV_PLANAR                0x4000
+#define FMT_YUV_PLANAR_INTERLEAVED    0x2000
 
-#define FMT_YUYV   0
-#define FMT_UYVY   1
+#define FMT_YUYV   (FMT_YUV | 0)
+#define FMT_UYVY   (FMT_YUV | 1)
 #define FMT_RGB    4
-#define FMT_YUVP   FMT_PLANAR
-#define FMT_YUVPI  (FMT_PLANAR | FMT_PLANAR_UV_INTERLEAVED)
+#define FMT_MJPEG  5
+#define FMT_YUVP   (FMT_YUV | FMT_YUV_PLANAR)
+#define FMT_YUVPI  (FMT_YUV | FMT_YUV_PLANAR | FMT_YUV_PLANAR_INTERLEAVED)
 #define FMT_YUV422  FMT_YUYV
 #define FMT_PAL     FMT_UYVY
 
@@ -209,7 +214,7 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
     printf("bilinear_interpolate_yuyv\n");
 
     int planar_u_base, planar_v_base;
-    if (ofmt & FMT_PLANAR) {
+    if (ofmt & FMT_YUV_PLANAR) {
         planar_u_base = width * height;
         planar_v_base = planar_u_base*3/2;
     }
@@ -277,12 +282,12 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
 
             float Y, Cb, Cr;
-            #if 1 // 
+            #if 0 // 
             //ITU-R BT.709
             Y = 16 + 0.183*R + 0.614*G + 0.062*B;
             Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
             Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
-            #elif 0 // Microsoft
+            #elif 1 // Microsoft
             Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
             Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
             Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
@@ -297,7 +302,7 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             // if (row > 1917)
             //     printf("[%d,%d] Y %f Cb %f Cr %f\n", row, col, Y, Cb, Cr);
 
-            if (!(ofmt & FMT_PLANAR)) {
+            if (!(ofmt & FMT_YUV_PLANAR)) {
                 int off = (width*(height-1-row) + col)*2;
                 if (ofmt == FMT_YUYV) {
                     yuv_buf[off] = Y;
@@ -324,7 +329,7 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             } else {
                 int off = (width*(height-1-row) + col);
                 yuv_buf[off] = Y;
-                if (!(ofmt & FMT_PLANAR_UV_INTERLEAVED)) {
+                if (!(ofmt & FMT_YUV_PLANAR_INTERLEAVED)) {
                     if (!(col&1)) {
                         yuv_buf[planar_u_base+off/2] = sCb = Cb;
                         yuv_buf[planar_v_base+off/2] = sCr = Cr;
@@ -371,8 +376,18 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
     } else {
         unsigned char *yuv_buf = malloc(insize * 2);
         memset(yuv_buf, 0, insize*2);
-        bilinear_interpolate_yuyv(raw_buf, width, height, filters_map[bayer_pattern], yuv_buf, ofmt);
-        write_file(outfile, yuv_buf, insize * 2);
+        int tmp_fmt = ofmt == FMT_MJPEG ? FMT_YUYV : ofmt;
+        bilinear_interpolate_yuyv(raw_buf, width, height, filters_map[bayer_pattern], yuv_buf, tmp_fmt);
+        if (ofmt != FMT_MJPEG) {
+            write_file(outfile, yuv_buf, insize * 2);
+        } else {
+            write_file("a.yuv", yuv_buf, insize * 2);
+            tje_encode_to_file(outfile, width, height, tmp_fmt, yuv_buf);
+            // int result = tje_encode_with_func(tjei_stdlib_func, fd,
+            //                         quality, width, height, src_fmt, src_data);
+
+        }
+        
         free(yuv_buf);
     }
     free(raw_buf);
@@ -420,6 +435,9 @@ int parse_format(char *str)
     if (!strcmp(str, "RGB")) {
         return FMT_RGB;
     }
+    if (!strcmp(str, "MJPEG")) {
+        return FMT_MJPEG;
+    }
     printf("unknown format %s, default to YUYV/YUV422\n", str);
     return FMT_YUYV;
 }
@@ -430,7 +448,7 @@ void usage(char* argv[])
                     "-r raw_bit_width       8/10/12\n"
                     "-b bayer_pattern       RG(default)|GB|GR|BG\n"
                     "-g WxH                 input image geometry width and height\n"
-                    "-f output_format       output format: YUV422/YUYV/YUY2(default,packed), YUVP(planar), YUVPI(planar uv interleaved), UYVY/PAL(packed), RGB(24 bits)\n"
+                    "-f output_format       output format: YUV422/YUYV/YUY2(default,packed), YUVP(planar), YUVPI(planar uv interleaved), UYVY/PAL(packed), RGB(24 bits), MJPEG\n"
                     "-e                     endian fix, reverse every 8 bytes",
                     argv[0]);
     exit(EXIT_FAILURE);
@@ -449,6 +467,7 @@ int main(int argc, char *argv[])
         switch (opt)
         {
         case 'r':
+        #warning only 8 bit width implemented, TODO: 10, 12, 14, 16 bit
             raw_bit_width = atoi(optarg);
             break;
         case 'b':

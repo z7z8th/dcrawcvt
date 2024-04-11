@@ -2,13 +2,15 @@ RAW_FILE ?= ../1920_1080_raw8_r12_0x1fa400_fixed.raw
 # RAW_FILE=../1920_1080_raw8_r12_0x1fa400.raw
 # RAW_FILE=../1920_1080_raw8_pg_P2_0x1fa400.raw
 
+CC = gcc
 CFLAGS += -g -O0 -Wall
+LDFLAGS += -lm
 
 %.o: %.c
 	gcc $(CFLAGS) -c -o $@ $<
 
 dcrawcvt: dcrawcvt.o
-#	gcc -g -O2 -o $@ $<
+	gcc $< $(LDFLAGS) -o $@
 
 ifeq ($(OS),Windows_NT)
 MAGICK = magick
@@ -41,11 +43,16 @@ toyuvpi: dcrawcvt
 	./dcrawcvt -g 1920x1080 -f YUVPI -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	$(OPEN) a.yuv
 
+tomjpeg: dcrawcvt
+	./dcrawcvt -g 1920x1080 -f MJPEG -b $(or $(BAYER),RG) $(RAW_FILE) a.jpeg
+	$(OPEN) a.jpeg
+
 clean:
 	-@rm -vf a.yuv
 	-@rm -vf a.rgb
 	-@rm -vf a.png
 	-@rm -vf dcrawcvt
 	-@rm -vf *.o
+	-@rm -vf *.exe
 
 .PHONY: test

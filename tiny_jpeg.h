@@ -59,14 +59,14 @@
 
 int main()
 {
-    int width, height, num_components;
-    unsigned char* data = stbi_load("in.bmp", &width, &height, &num_components, 0);
+    int width, height, src_fmt;
+    unsigned char* data = stbi_load("in.bmp", &width, &height, &src_fmt, 0);
     if ( !data ) {
         puts("Could not find file");
         return EXIT_FAILURE;
     }
 
-    if ( !tje_encode_to_file("out.jpg", width, height, num_components, data) ) {
+    if ( !tje_encode_to_file("out.jpg", width, height, src_fmt, data) ) {
         fprintf(stderr, "Could not write JPEG\n");
         return EXIT_FAILURE;
     }
@@ -97,6 +97,15 @@ extern "C"
 #ifndef TJE_HEADER_GUARD
 #define TJE_HEADER_GUARD
 
+#define TJE_FMT_YUV                       0x8000
+#define TJE_FMT_YUV_PLANAR                0x4000
+#define TJE_FMT_YUV_PLANAR_INTERLEAVED    0x2000
+
+#define TJE_FMT_YUYV   (TJE_FMT_YUV | 0x0)
+#define TJE_FMT_UYVY   (TJE_FMT_YUV | 0x1)
+#define TJE_FMT_YUVP   (TJE_FMT_YUV | TJE_FMT_YUV_PLANAR)
+#define TJE_FMT_YUVPI  (TJE_FMT_YUV | TJE_FMT_YUV_PLANAR | TJE_FMT_YUV_PLANAR_INTERLEAVED)
+
 // - tje_encode_to_file -
 //
 // Usage:
@@ -105,7 +114,7 @@ extern "C"
 //  PARAMETERS
 //      dest_path:          filename to which we will write. e.g. "out.jpg"
 //      width, height:      image size in pixels
-//      num_components:     3 is RGB. 4 is RGBA. Those are the only supported values
+//      src_fmt:            3 is RGB. 4 is RGBA. TJE_FMT_*YUV*. Those are the only supported values
 //      src_data:           pointer to the pixel data.
 //
 //  RETURN:
@@ -114,7 +123,7 @@ extern "C"
 int tje_encode_to_file(const char* dest_path,
                        const int width,
                        const int height,
-                       const int num_components,
+                       const int src_fmt,
                        const unsigned char* src_data);
 
 // - tje_encode_to_file_at_quality -
@@ -128,7 +137,7 @@ int tje_encode_to_file(const char* dest_path,
 //                          2: Very good quality. About 1/2 the size of 3.
 //                          1: Noticeable. About 1/6 the size of 3, or 1/3 the size of 2.
 //      width, height:      image size in pixels
-//      num_components:     3 is RGB. 4 is RGBA. Those are the only supported values
+//      src_fmt:     3 is RGB. 4 is RGBA. TJE_FMT_*YUV*. Those are the only supported values
 //      src_data:           pointer to the pixel data.
 //
 //  RETURN:
@@ -138,7 +147,7 @@ int tje_encode_to_file_at_quality(const char* dest_path,
                                   const int quality,
                                   const int width,
                                   const int height,
-                                  const int num_components,
+                                  const int src_fmt,
                                   const unsigned char* src_data);
 
 // - tje_encode_with_func -
@@ -156,7 +165,7 @@ int tje_encode_with_func(tje_write_func* func,
                          const int quality,
                          const int width,
                          const int height,
-                         const int num_components,
+                         const int src_fmt,
                          const unsigned char* src_data);
 
 #endif // TJE_HEADER_GUARD
@@ -949,9 +958,22 @@ static int tjei_encode_main(TJEState* state,
                             const unsigned char* src_data,
                             const int width,
                             const int height,
-                            const int src_num_components)
+                            const int src_fmt)
 {
-    if (src_num_components != 3 && src_num_components != 4) {
+    int src_num_components;
+    int planar_u_base, planar_v_base;
+    
+    if (src_fmt == 3 || src_fmt == 4) {
+        src_num_components = src_fmt;
+    } else if (src_fmt & TJE_FMT_YUV) {
+        if (src_fmt & TJE_FMT_YUV_PLANAR) {
+            src_num_components = 1;
+            planar_u_base = width * height;
+            planar_v_base = planar_u_base*3/2;
+        } else {
+            src_num_components = 2;
+        }
+    } else {
         return 0;
     }
 
@@ -1097,6 +1119,7 @@ static int tjei_encode_main(TJEState* state,
             for ( int off_y = 0; off_y < 8; ++off_y ) {
                 for ( int off_x = 0; off_x < 8; ++off_x ) {
                     int block_index = (off_y * 8 + off_x);
+                    float luma, cb, cr;
 
                     int src_index = (((y + off_y) * width) + (x + off_x)) * src_num_components;
 
@@ -1111,13 +1134,41 @@ static int tjei_encode_main(TJEState* state,
                     }
                     assert(src_index < width * height * src_num_components);
 
-                    uint8_t r = src_data[src_index + 0];
-                    uint8_t g = src_data[src_index + 1];
-                    uint8_t b = src_data[src_index + 2];
+                    if (!(src_fmt & TJE_FMT_YUV)) {  // RGB, RGBA
 
-                    float luma = 0.299f   * r + 0.587f    * g + 0.114f    * b - 128;
-                    float cb   = -0.1687f * r - 0.3313f   * g + 0.5f      * b;
-                    float cr   = 0.5f     * r - 0.4187f   * g - 0.0813f   * b;
+                        uint8_t r = src_data[src_index + 0];
+                        uint8_t g = src_data[src_index + 1];
+                        uint8_t b = src_data[src_index + 2];
+
+                        luma = 0.299f   * r + 0.587f    * g + 0.114f    * b - 128;
+                        cb   = -0.1687f * r - 0.3313f   * g + 0.5f      * b;
+                        cr   = 0.5f     * r - 0.4187f   * g - 0.0813f   * b;
+                    } else {  // YUV
+                        // int offset = row * width + col;
+                        if (!(src_fmt & TJE_FMT_YUV_PLANAR)) {
+                            if (src_fmt == TJE_FMT_YUYV) {
+                                luma = src_data[src_index];
+                                cb = src_data[src_index - 1 + ((~col&1)<<1)];
+                                cr = src_data[src_index + 1 + ((~col&1)<<1)];
+                            } else {
+                                luma = src_data[src_index + 1];
+                                cb = src_data[src_index - 2 + ((~col&1)<<1)];
+                                cr = src_data[src_index + ((~col&1)<<1)];
+                            }
+                        } else {
+                            luma = src_data[src_index];
+                            if (!(src_fmt & TJE_FMT_YUV_PLANAR_INTERLEAVED)) {
+                                cb = src_data[planar_u_base+src_index/2];
+                                cr = src_data[planar_v_base+src_index/2];
+                            } else {
+                                cb = src_data[planar_u_base + src_index - 1 + (~col&1)];
+                                cr = src_data[planar_u_base + src_index + (~col&1)];
+                            }
+                        }
+                        luma -= 16 + 128;
+                        cb -= 128;
+                        cr -= 128;
+                    }
 
                     du_y[block_index] = luma;
                     du_b[block_index] = cb;
@@ -1177,10 +1228,10 @@ static int tjei_encode_main(TJEState* state,
 int tje_encode_to_file(const char* dest_path,
                        const int width,
                        const int height,
-                       const int num_components,
+                       const int src_fmt,
                        const unsigned char* src_data)
 {
-    int res = tje_encode_to_file_at_quality(dest_path, 3, width, height, num_components, src_data);
+    int res = tje_encode_to_file_at_quality(dest_path, 3, width, height, src_fmt, src_data);
     return res;
 }
 
@@ -1195,7 +1246,7 @@ int tje_encode_to_file_at_quality(const char* dest_path,
                                   const int quality,
                                   const int width,
                                   const int height,
-                                  const int num_components,
+                                  const int src_fmt,
                                   const unsigned char* src_data)
 {
     FILE* fd = fopen(dest_path, "wb");
@@ -1205,7 +1256,7 @@ int tje_encode_to_file_at_quality(const char* dest_path,
     }
 
     int result = tje_encode_with_func(tjei_stdlib_func, fd,
-                                      quality, width, height, num_components, src_data);
+                                      quality, width, height, src_fmt, src_data);
 
     result |= 0 == fclose(fd);
 
@@ -1217,7 +1268,7 @@ int tje_encode_with_func(tje_write_func* func,
                          const int quality,
                          const int width,
                          const int height,
-                         const int num_components,
+                         const int src_fmt,
                          const unsigned char* src_data)
 {
     if (quality < 1 || quality > 3) {
@@ -1265,7 +1316,7 @@ int tje_encode_with_func(tje_write_func* func,
 
     tjei_huff_expand(&state);
 
-    int result = tjei_encode_main(&state, src_data, width, height, num_components);
+    int result = tjei_encode_main(&state, src_data, width, height, src_fmt);
 
     return result;
 }
