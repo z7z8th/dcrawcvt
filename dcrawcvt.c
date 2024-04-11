@@ -35,7 +35,7 @@
 #define FMT_PAL     FMT_UYVY
 
 // WARN: don not miss the () around row!!!
-#define RAW(row, col)   ((float)raw_buf[width*(row) + (col)])
+#define RAW(row, col)   ((int)raw_buf[width*(row) + (col)])
 
 // simplified from dcraw code
 // 0/1/2/3 = R/G1/B/G2, to simplify G1=G2=1
@@ -97,7 +97,7 @@ void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, uns
 
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
-            float R, G, B;
+            int R, G, B;
             R = G = B = 128;
 
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
@@ -163,14 +163,14 @@ void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned 
         if (hrow != 1 && hrow != 4) {
             for (int col = 1; col < width; col+=2) {
                 for(int c=0; c<4; c++)
-                    hbuf[hrow*width + col][c] = LIM(((float)hbuf[hrow*width + col + 1][c] + (float)hbuf[hrow*width + col - 1][c])/2, 0, 255);
+                    hbuf[hrow*width + col][c] = LIM(((int)hbuf[hrow*width + col + 1][c] + (int)hbuf[hrow*width + col - 1][c])/2, 0, 255);
             }
         }
     }
     for (hrow=1; hrow < 6; hrow+=3) {
         for (int col = 0; col < width; col+=1) {
             for(int c=0; c<4; c++)
-                hbuf[hrow*width + col][c] = LIM(((float)hbuf[(hrow-1)*width + col][c] + (float)hbuf[(hrow+1)*width + col][c])/2, 0, 255);
+                hbuf[hrow*width + col][c] = LIM(((int)hbuf[(hrow-1)*width + col][c] + (int)hbuf[(hrow+1)*width + col][c])/2, 0, 255);
         }
     }
 
@@ -195,14 +195,14 @@ void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned 
         if (hcol != 1 && hcol != 4) {
             for (int row = 1; row < height; row+=2) {
                 for(int c=0; c<4; c++)
-                    vbuf[hcol*height + row][c] = LIM(((float)vbuf[hcol*height + row + 1][c] + (float)vbuf[hcol*height + row - 1][c])/2, 0, 255);
+                    vbuf[hcol*height + row][c] = LIM(((int)vbuf[hcol*height + row + 1][c] + (int)vbuf[hcol*height + row - 1][c])/2, 0, 255);
             }
         }
     }
     for (hcol=1; hcol < 6; hcol+=3) {
         for (int row = 0; row < height; row+=1) {
             for(int c=0; c<4; c++)
-                vbuf[hcol*height + row][c] = LIM(((float)vbuf[(hcol-1)*height + row][c] + (float)vbuf[(hcol+1)*height + row][c])/2, 0, 255);
+                vbuf[hcol*height + row][c] = LIM(((int)vbuf[(hcol-1)*height + row][c] + (int)vbuf[(hcol+1)*height + row][c])/2, 0, 255);
         }
     }
     // /border
@@ -228,9 +228,9 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
     // main area
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
-            float sCb = 128, sCr = 128;
+            int sCb = 128, sCr = 128;
 
-            float R, G, B;
+            int R, G, B;
 
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
                 int fc = FC(row, col);
@@ -281,16 +281,16 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             // if (!(row & 1))
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
 
-            float Y, Cb, Cr;
+            int Y, Cb, Cr;
             #if 0 // 
             //ITU-R BT.709
             Y = 16 + 0.183*R + 0.614*G + 0.062*B;
             Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
             Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
             #elif 1 // Microsoft
-            Y = (0.229 * R) + (0.587 * G) + (0.114 * B) + 16;
-            Cb = -(0.169 * R) - (0.331 * G) + (0.500 * B) + 128;
-            Cr = (0.500 * R) - (0.419 * G) - (0.081 * B) + 128;
+            Y = ((234 * R + 601 * G + 117 * B)>>10) + 16;
+            Cb = (-173 * R - 339 * G + 512 * B + 128 * 1024) >> 10;
+            Cr = (512 * R - 429 * G - 83 * B + 128 * 1024) >> 10;
             #else // wikipedia, white may show as black
             Y = 16 + 0.2126*R + 0.7152*G + 0.0722*B, 255;
             Cb = 128 -0.09991*R - 0.33609*G + 0.436*B, 255;

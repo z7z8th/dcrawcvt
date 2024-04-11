@@ -961,7 +961,7 @@ static int tjei_encode_main(TJEState* state,
                             const int src_fmt)
 {
     int src_num_components;
-    int planar_u_base, planar_v_base;
+    int planar_u_base = 0, planar_v_base = 0;
     
     if (src_fmt == 3 || src_fmt == 4) {
         src_num_components = src_fmt;
@@ -1158,8 +1158,8 @@ static int tjei_encode_main(TJEState* state,
                         } else {
                             luma = src_data[src_index];
                             if (!(src_fmt & TJE_FMT_YUV_PLANAR_INTERLEAVED)) {
-                                cb = src_data[planar_u_base+src_index/2];
-                                cr = src_data[planar_v_base+src_index/2];
+                                cb = src_data[planar_u_base + src_index/2];
+                                cr = src_data[planar_v_base + src_index/2];
                             } else {
                                 cb = src_data[planar_u_base + src_index - 1 + (~col&1)];
                                 cr = src_data[planar_u_base + src_index + (~col&1)];

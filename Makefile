@@ -12,6 +12,10 @@ LDFLAGS += -lm
 dcrawcvt: dcrawcvt.o
 	gcc $< $(LDFLAGS) -o $@
 
+ifeq ($(DEBUG),0)
+CFLAGS += -O2
+endif
+
 ifeq ($(OS),Windows_NT)
 MAGICK = magick
 OPEN = start
