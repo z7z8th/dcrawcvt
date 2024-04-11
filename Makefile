@@ -62,7 +62,8 @@ gcov: dcrawcvt
 clean:
 	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png
 	-@rm -vf dcrawcvt
-	-@rm -vf *.o
-	-@rm -vf *.exe
+	-@rm -vf *.o *.exe
+	-@rm -vf perf.data*
+	-@rm -vf *.gcda *.gcno *.gcov
 
 .PHONY: test

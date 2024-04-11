@@ -17,9 +17,9 @@
 #define CLIP(x) LIM((int)(x), 0, 65535)
 #define SWAP(a, b) \
     {              \
-        a = a + b; \
-        b = a - b; \
-        a = a - b; \
+        a = a ^ b; \
+        b = a ^ b; \
+        a = a ^ b; \
     }
 
 #define FMT_YUV                       0x8000
@@ -235,28 +235,24 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
             int sCb = 128, sCr = 128;
-
             int R, G, B;
 
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
                 int fc = FC(row, col);
-                if (fc == RAWC_RED) {  // RGGB R pos
-                    R = ((RAW(row, col)<<2) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))>>3;
-                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
-                    B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-                } else if (fc == RAWC_BLUE) {  // RGGB B pos
-                    R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
-                    B = ((RAW(row, col)<<2) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))>>3;
-                } else { // RGGB G pos
+                if (fc == RAWC_GREEN){ // RGGB G pos
+                    R = (RAW(row,col-1) + RAW(row,col+1))/2;
+                    B = (RAW(row-1,col) + RAW(row+1,col))/2;
+                    // TODO: verify x4 in current pos
                     G = ((RAW(row, col)<<2) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))>>3;
-                    if (!(row&1)) {
-                        R = (RAW(row,col-1) + RAW(row,col+1))/2;
-                        B = (RAW(row-1,col) + RAW(row+1,col))/2;
-                    } else {
-                        B = (RAW(row,col-1) + RAW(row,col+1))/2;
-                        R = (RAW(row-1,col) + RAW(row+1,col))/2;
-                    }
+                    if (row&1)
+                        SWAP(R, B);
+                } else {
+                    // TODO: verify x4 in current pos
+                    R = ((RAW(row, col)<<2) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))>>3;
+                    B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
+                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
+                    if (fc == RAWC_BLUE)
+                        SWAP(R, B);
                 }
             } else {
                 // border
