@@ -355,6 +355,46 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
     free(vbuf);
 }
 
+typedef struct mybuf {
+    void * buffer;
+    int offset;
+    size_t size;
+} mybuf;
+
+void mybuf_alloc(mybuf *buf, size_t size)
+{
+    buf->buffer = malloc(size);
+    if (buf->buffer)
+        buf->size = size;
+    buf->offset = 0;
+}
+
+void mybuf_append(void *ctx, void *indata, int insize)
+{
+    mybuf *buf = (mybuf *)ctx;
+    if (insize > buf->size - buf->offset) {
+        printf("mybuf not enough space to append data\n");
+        return;
+    }
+    memcpy(buf->buffer + buf->offset, indata, insize);
+    buf->offset += insize;
+}
+
+void mybuf_free(mybuf *buf, size_t size)
+{
+    free(buf->buffer);
+    buf->buffer = NULL;
+    buf->size = buf->offset = 0;
+}
+
+void* mybuf_get(mybuf *buf) {
+    return buf->buffer;
+}
+
+size_t mybuf_size(mybuf *buf) {
+    return buf->size;
+}
+
 void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *infile, char *outfile, int ofmt)
 {
     size_t insize = 0;
@@ -381,11 +421,14 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
         if (ofmt != FMT_MJPEG) {
             write_file(outfile, yuv_buf, insize * 2);
         } else {
-            write_file("a.yuv", yuv_buf, insize * 2);
-            tje_encode_to_file(outfile, width, height, tmp_fmt, yuv_buf);
-            // int result = tje_encode_with_func(tjei_stdlib_func, fd,
-            //                         quality, width, height, src_fmt, src_data);
-
+            // write_file("a.yuv", yuv_buf, insize * 2);
+            // tje_encode_to_file(outfile, width, height, tmp_fmt, yuv_buf);
+            struct mybuf mjpegbuf;
+            mybuf_alloc(&mjpegbuf, insize);
+            int result = tje_encode_with_func(mybuf_append, &mjpegbuf,
+                                    3, width, height, tmp_fmt, yuv_buf);
+            printf("to jpeg result %s\n", result ? "ok" : "fail");
+            write_file(outfile, mybuf_get(&mjpegbuf), mybuf_size(&mjpegbuf));
         }
         
         free(yuv_buf);
