@@ -358,21 +358,21 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
 typedef struct mybuf {
     void * buffer;
     int offset;
-    size_t size;
+    size_t cap;
 } mybuf;
 
 void mybuf_alloc(mybuf *buf, size_t size)
 {
     buf->buffer = malloc(size);
     if (buf->buffer)
-        buf->size = size;
+        buf->cap = size;
     buf->offset = 0;
 }
 
 void mybuf_append(void *ctx, void *indata, int insize)
 {
     mybuf *buf = (mybuf *)ctx;
-    if (insize > buf->size - buf->offset) {
+    if (insize > buf->cap - buf->offset) {
         printf("mybuf not enough space to append data\n");
         return;
     }
@@ -384,7 +384,7 @@ void mybuf_free(mybuf *buf, size_t size)
 {
     free(buf->buffer);
     buf->buffer = NULL;
-    buf->size = buf->offset = 0;
+    buf->cap = buf->offset = 0;
 }
 
 void* mybuf_get(mybuf *buf) {
@@ -392,7 +392,11 @@ void* mybuf_get(mybuf *buf) {
 }
 
 size_t mybuf_size(mybuf *buf) {
-    return buf->size;
+    return buf->offset;
+}
+
+size_t mybuf_capacity(mybuf *buf) {
+    return buf->cap;
 }
 
 void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *infile, char *outfile, int ofmt)
