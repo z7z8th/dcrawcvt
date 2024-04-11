@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 #define TJE_IMPLEMENTATION
 #include "tiny_jpeg.h"
@@ -138,6 +139,9 @@ void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, uns
     }
 }
 
+// #define NO_BORDER_INTERPOLATE
+
+#ifndef NO_BORDER_INTERPOLATE
 void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned filters, unsigned char (*hbuf)[4], unsigned char (*vbuf)[4])
 {
     // top and bottom border
@@ -208,6 +212,7 @@ void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned 
     // /border
     
 }
+#endif
 
 void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, unsigned filters, unsigned char *yuv_buf, int ofmt)
 {
@@ -218,13 +223,14 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
         planar_u_base = width * height;
         planar_v_base = planar_u_base*3/2;
     }
-    
+
+#ifndef NO_BORDER_INTERPOLATE
     // gen border bayer image
     unsigned char (*hbuf)[4] = calloc(6, width*4);
     unsigned char (*vbuf)[4] = calloc(6, height*4);
 
     border_interpolate(raw_buf, width, height, filters, hbuf, vbuf);
-
+#endif
     // main area
     for(int row = 0; row < height; row++) {
         for (int col = 0; col < width; col++) {
@@ -235,15 +241,15 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
                 int fc = FC(row, col);
                 if (fc == RAWC_RED) {  // RGGB R pos
-                    R = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                    R = ((RAW(row, col)<<2) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))>>3;
                     G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
                     B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
                 } else if (fc == RAWC_BLUE) {  // RGGB B pos
                     R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
                     G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
-                    B = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
+                    B = ((RAW(row, col)<<2) + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))>>3;
                 } else { // RGGB G pos
-                    G = (RAW(row, col)*2 + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/6;
+                    G = ((RAW(row, col)<<2) + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))>>3;
                     if (!(row&1)) {
                         R = (RAW(row,col-1) + RAW(row,col+1))/2;
                         B = (RAW(row-1,col) + RAW(row+1,col))/2;
@@ -254,7 +260,7 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
                 }
             } else {
                 // border
-                // R = G = B = 128;
+#ifndef NO_BORDER_INTERPOLATE
                 unsigned char *pix;
                 if (row < 2) {
                     pix = hbuf[row*width + col];
@@ -269,7 +275,9 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
                 R = pix[RAWC_RED];
                 G = pix[RAWC_GREEN];
                 B = pix[RAWC_BLUE];
-
+#else
+                R = G = B = 128;
+#endif
                 // if (row < 1)
                     // printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
                 // exit(0);
@@ -351,8 +359,10 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
         }
     }
 
+#ifndef NO_BORDER_INTERPOLATE
     free(hbuf);
     free(vbuf);
+#endif
 }
 
 typedef struct mybuf {
@@ -411,6 +421,7 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
     if(endian_fix)
         fix_endian(raw_buf, width, height);
 
+    clock_t start = clock();
     if (ofmt == FMT_RGB) {
         unsigned char *rgb_buf = malloc(insize * 3);
         memset(rgb_buf, 0xff, insize*3);
@@ -437,6 +448,10 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
         
         free(yuv_buf);
     }
+    clock_t end = clock() ;
+    double elapsed_time = (end-start)/(double)CLOCKS_PER_SEC;
+    printf("bilinear interpolate time %fs\n", elapsed_time);
+
     free(raw_buf);
 }
 
