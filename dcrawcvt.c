@@ -565,7 +565,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    printf("debayer pattern %d w\n", bayer_pattern);
+    printf("debayer pattern %d\n", bayer_pattern);
     printf("w %d h %d\n", width, height);
     printf("output format %d\n", output_format);
 
