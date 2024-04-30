@@ -99,6 +99,64 @@ void write_file(char *path, unsigned char *raw_buf, size_t size)
     }
 }
 
+
+struct awb_info
+{
+    unsigned avgR;
+    unsigned avgG;
+    unsigned avgB;
+};
+
+struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, unsigned filters)
+{
+    int pix_cnt = width * height;
+
+    
+    unsigned avgR = 0;
+    unsigned avgG = 0;
+    unsigned avgB = 0;
+
+    int off = 0;
+    for (int row = 0; row < height; row++)
+    {
+        for (int col = 0; col < width; col++)
+        {
+            unsigned pix = RAWI(off);
+            int fc = FC(row, col);
+
+            if (fc == RAWC_RED)
+                avgR += pix;
+            else if (fc == RAWC_BLUE)
+                avgB += pix;
+            else
+                avgG += pix;
+
+            off++;
+        }
+    }
+
+    avgR /= pix_cnt >> 2;
+    avgG /= pix_cnt >> 1;
+    avgB /= pix_cnt >> 2;
+
+    unsigned vmax = sqrt(avgR*avgR + avgG*avgG + avgB*avgB);
+    avgR = (avgR << 10) / vmax;
+    avgG = (avgG << 10) / vmax;
+    avgB = (avgB << 10) / vmax;
+
+    vmax = MAX(avgR, avgG);
+    vmax = MAX(vmax, avgB);
+
+    avgR = (vmax << 10) / avgR;
+    avgG = (vmax << 10) / avgG;
+    avgB = (vmax << 10) / avgB;
+
+    struct awb_info awb = { avgR, avgG, avgB };
+
+    return awb;
+}
+
+
 #ifndef NO_RGB_INTERPOLATE
 void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, unsigned char *rgb_buf)
 {
@@ -240,9 +298,12 @@ void border_interpolate(unsigned char *raw_buf, int width, int height, unsigned 
 }
 #endif
 
-void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, unsigned filters, unsigned char *yuv_buf, int ofmt)
+void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, unsigned filters, struct awb_info awbi, unsigned char *yuv_buf, int ofmt)
 {
     printf("bilinear_interpolate_yuyv\n");
+    unsigned avgR = awbi.avgR;
+    unsigned avgG = awbi.avgG;
+    unsigned avgB = awbi.avgB;
 
     int planar_u_base, planar_v_base;
     if (ofmt & FMT_YUV_PLANAR)
@@ -339,6 +400,12 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
                 // printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
                 // exit(0);
             }
+
+            // color constancy
+            R = (R*avgR) >> 10;
+            G = (G*avgG) >> 10;
+            B = (B*avgB) >> 10;
+
             R = LIM(R, 0, 255);
             G = LIM(G, 0, 255);
             B = LIM(B, 0, 255);
@@ -497,6 +564,7 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
 {
     size_t insize = 0;
     unsigned char *raw_buf = read_file(infile, &insize);
+    unsigned filters = filters_map[bayer_pattern];
     if (insize < width * height)
     {
         printf("input file is truncated? intput file size %ld wxh %d\n", insize, width * height);
@@ -507,6 +575,8 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
         fix_endian(raw_buf, width, height);
 
     clock_t start = clock();
+    struct awb_info awbi = awb_grayworld(raw_buf, width, height, filters);
+
     if (ofmt == FMT_RGB)
     {
         unsigned char *rgb_buf = malloc(insize * 3);
@@ -520,7 +590,7 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
         unsigned char *yuv_buf = malloc(insize * 2);
         memset(yuv_buf, 0, insize * 2);
         int tmp_fmt = ofmt == FMT_MJPEG ? FMT_YUYV : ofmt;
-        bilinear_interpolate_yuyv(raw_buf, width, height, filters_map[bayer_pattern], yuv_buf, tmp_fmt);
+        bilinear_interpolate_yuyv(raw_buf, width, height, filters, awbi, yuv_buf, tmp_fmt);
         if (ofmt != FMT_MJPEG)
         {
             write_file(outfile, yuv_buf, insize * 2);
