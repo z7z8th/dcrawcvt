@@ -28,45 +28,46 @@ OPEN = open
 endif
 
 torgb: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f RGB -b $(or $(BAYER),RG) $(and $(FIX_ENDIAN),-e) $(RAW_FILE) a.rgb
+	./dcrawcvt -g 1920x1080 -f RGB $(OPTIONS) $(and $(FIX_ENDIAN),-e) $(RAW_FILE) a.rgb
 	$(MAGICK) convert -depth 8 -size 1920x1080+0 rgb:a.rgb a.png
 	$(OPEN) a.png
 
 tobmp: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f UYVY -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	time ./dcrawcvt -g 1920x1080 -f UYVY $(OPTIONS) $(RAW_FILE) a.yuv
 	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.bmp
 	$(OPEN) a.bmp
 
 touyvy: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f UYVY -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
-	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
+	./dcrawcvt -g 1920x1080 -f UYVY $(OPTIONS) $(RAW_FILE) a.yuv
+	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
+	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 960x540+0 pal:a.yuv a.png
 	$(OPEN) a.png
 topal: touyvy
 
 toyuyv: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	time ./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
 	$(OPEN) a.yuv
 toyuv422:toyuyv
 
 toyuvp: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVP -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVP $(OPTIONS) $(RAW_FILE) a.yuv
 	$(OPEN) a.yuv
 
 toyuvpi: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVPI -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVPI $(OPTIONS) $(RAW_FILE) a.yuv
 	$(OPEN) a.yuv
 
 tomjpeg: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f MJPEG -b $(or $(BAYER),RG) $(RAW_FILE) a.jpeg
+	time ./dcrawcvt -g 1920x1080 -f MJPEG $(OPTIONS) $(RAW_FILE) a.jpeg
 	$(OPEN) a.jpeg
 
 perf: dcrawcvt
-	perf record -- ./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	perf record -- ./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
 
 gcov: CFLAGS += -fprofile-arcs -ftest-coverage
 gcov: LDFLAGS += -lgcov --coverage
 gcov: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
 
 clean:
 	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png a.bmp
