@@ -24,6 +24,8 @@
         a = a ^ b; \
     }
 
+
+#if 0
 // http://www.azillionmonkeys.com/qed/sqroot.html
 static unsigned isqrt(unsigned long val)
 {
@@ -56,6 +58,7 @@ void test_isqrt()
         }
     }
 }
+#endif
 
 #define FMT_YUV 0x8000
 #define FMT_YUV_PLANAR 0x4000
@@ -182,10 +185,11 @@ struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, uns
     avgG /= pix_cnt >> 1;
     avgB /= pix_cnt >> 2;
 
-    unsigned vmax = isqrt(avgR * avgR + avgG * avgG + avgB * avgB);
-    avgR = (avgR << 10) / vmax;
-    avgG = (avgG << 10) / vmax;
-    avgB = (avgB << 10) / vmax;
+    unsigned vmax;
+    // vmax = isqrt(avgR * avgR + avgG * avgG + avgB * avgB);
+    // avgR = (avgR << 10) / vmax;
+    // avgG = (avgG << 10) / vmax;
+    // avgB = (avgB << 10) / vmax;
 
     vmax = MAX(avgR, avgG);
     vmax = MAX(vmax, avgB);
