@@ -10,7 +10,7 @@
 
 #define SQR(x) ((x) * (x))
 #ifndef ABS
-#   define ABS(x) (((int)(x) ^ ((int)(x) >> 31)) - ((int)(x) >> 31))
+#define ABS(x) (((int)(x) ^ ((int)(x) >> 31)) - ((int)(x) >> 31))
 #endif
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -23,6 +23,39 @@
         b = a ^ b; \
         a = a ^ b; \
     }
+
+// http://www.azillionmonkeys.com/qed/sqroot.html
+static unsigned isqrt(unsigned long val)
+{
+    unsigned long temp, g = 0, b = 0x8000, bshift = 15;
+    do
+    {
+        temp = ((g << 1) + b) << bshift--;
+        if (val >= temp)
+        {
+            g += b;
+            val -= temp;
+        }
+    } while (b >>= 1);
+    return g;
+}
+
+void test_isqrt()
+{
+    for (unsigned i = 0; i < UINT32_MAX; i++)
+    {
+        if (!(i & 0xFFFFFF))
+        {
+            putchar('.');
+            fflush(stdout);
+        }
+        double diff = sqrt(i) - isqrt(i);
+        if (ABS(diff) > 1)
+        {
+            printf("isqrt inaccurate %f %u\n", sqrt(i), isqrt(i));
+        }
+    }
+}
 
 #define FMT_YUV 0x8000
 #define FMT_YUV_PLANAR 0x4000
@@ -99,6 +132,7 @@ void write_file(char *path, unsigned char *raw_buf, size_t size)
     }
 }
 
+// #define NO_AWB
 
 struct awb_info
 {
@@ -111,7 +145,6 @@ struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, uns
 {
     int pix_cnt = width * height;
 
-    
     unsigned avgR = 0;
     unsigned avgG = 0;
     unsigned avgB = 0;
@@ -139,7 +172,7 @@ struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, uns
     avgG /= pix_cnt >> 1;
     avgB /= pix_cnt >> 2;
 
-    unsigned vmax = sqrt(avgR*avgR + avgG*avgG + avgB*avgB);
+    unsigned vmax = isqrt(avgR * avgR + avgG * avgG + avgB * avgB);
     avgR = (avgR << 10) / vmax;
     avgG = (avgG << 10) / vmax;
     avgB = (avgB << 10) / vmax;
@@ -151,42 +184,54 @@ struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, uns
     avgG = (vmax << 10) / avgG;
     avgB = (vmax << 10) / avgB;
 
-    struct awb_info awb = { avgR, avgG, avgB };
+    struct awb_info awb = {avgR, avgG, avgB};
 
     return awb;
 }
-
 
 #ifndef NO_RGB_INTERPOLATE
 void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, unsigned char *rgb_buf)
 {
     printf("bilinear_interpolate_rgb\n");
 
-    for(int row = 0; row < height; row++) {
-        for (int col = 0; col < width; col++) {
+    for (int row = 0; row < height; row++)
+    {
+        for (int col = 0; col < width; col++)
+        {
             int R, G, B;
             R = G = B = 128;
 
-            if (row > 1 && row < height-2 && col > 1 && col < width - 2) {
-                if (!(row & 1) && !(col & 1)) {  // RGGB R pos
-                    R = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
-                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
-                    B = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-                } else if ((row & 1) && (col & 1)) {  // B pos
-                    R = (RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col-1) + RAW(row+1,col+1))/4;
-                    G = (RAW(row,col-1) + RAW(row-1,col) + RAW(row,col+1) + RAW(row+1,col))/4;
-                    B = (RAW(row, col)*2 + RAW(row-2,col) + RAW(row,col+2) + RAW(row+2,col) + RAW(row,col-2))/6;
-                } else { // G pos
-                    G = (RAW(row, col)*2 + RAW(row-1,col-1) + RAW(row-1,col+1) + RAW(row+1,col+1) + RAW(row+1,col-1))/6;
-                    if (!(row&1)) {
-                        R = (RAW(row,col-1) + RAW(row,col+1))/2;
-                        B = (RAW(row-1,col) + RAW(row+1,col))/2;
-                    } else {
-                        B = (RAW(row,col-1) + RAW(row,col+1))/2;
-                        R = (RAW(row-1,col) + RAW(row+1,col))/2;
+            if (row > 1 && row < height - 2 && col > 1 && col < width - 2)
+            {
+                if (!(row & 1) && !(col & 1))
+                { // RGGB R pos
+                    R = (RAW(row, col) * 2 + RAW(row - 2, col) + RAW(row, col + 2) + RAW(row + 2, col) + RAW(row, col - 2)) / 6;
+                    G = (RAW(row, col - 1) + RAW(row - 1, col) + RAW(row, col + 1) + RAW(row + 1, col)) / 4;
+                    B = (RAW(row - 1, col - 1) + RAW(row - 1, col + 1) + RAW(row + 1, col - 1) + RAW(row + 1, col + 1)) / 4;
+                }
+                else if ((row & 1) && (col & 1))
+                { // B pos
+                    R = (RAW(row - 1, col - 1) + RAW(row - 1, col + 1) + RAW(row + 1, col - 1) + RAW(row + 1, col + 1)) / 4;
+                    G = (RAW(row, col - 1) + RAW(row - 1, col) + RAW(row, col + 1) + RAW(row + 1, col)) / 4;
+                    B = (RAW(row, col) * 2 + RAW(row - 2, col) + RAW(row, col + 2) + RAW(row + 2, col) + RAW(row, col - 2)) / 6;
+                }
+                else
+                { // G pos
+                    G = (RAW(row, col) * 2 + RAW(row - 1, col - 1) + RAW(row - 1, col + 1) + RAW(row + 1, col + 1) + RAW(row + 1, col - 1)) / 6;
+                    if (!(row & 1))
+                    {
+                        R = (RAW(row, col - 1) + RAW(row, col + 1)) / 2;
+                        B = (RAW(row - 1, col) + RAW(row + 1, col)) / 2;
+                    }
+                    else
+                    {
+                        B = (RAW(row, col - 1) + RAW(row, col + 1)) / 2;
+                        R = (RAW(row - 1, col) + RAW(row + 1, col)) / 2;
                     }
                 }
-            } else {
+            }
+            else
+            {
                 R = G = B = 128;
             }
             R = LIM(R, 0, 255);
@@ -196,11 +241,11 @@ void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, uns
             // if (!(row & 1))
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
 
-            int off = (width*(height-1-row) + col)*3;
+            int off = (width * (height - 1 - row) + col) * 3;
             // printf("off %d r %f g %f b %f\n", off, R, G, B);
             rgb_buf[off] = R;
-            rgb_buf[off+1] = G;
-            rgb_buf[off+2] = B;
+            rgb_buf[off + 1] = G;
+            rgb_buf[off + 2] = B;
         }
     }
 }
@@ -401,11 +446,13 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
                 // exit(0);
             }
 
-            // color constancy
-            R = (R*avgR) >> 10;
-            G = (G*avgG) >> 10;
-            B = (B*avgB) >> 10;
+#ifndef NO_AWB
 
+            // color constancy
+            R = (R * avgR) >> 10;
+            G = (G * avgG) >> 10;
+            B = (B * avgB) >> 10;
+#endif
             R = LIM(R, 0, 255);
             G = LIM(G, 0, 255);
             B = LIM(B, 0, 255);
@@ -414,8 +461,8 @@ void bilinear_interpolate_yuyv(unsigned char *raw_buf, int width, int height, un
             //     printf("[%d,%d] R %f G %f B %f\n", row, col, R, G, B);
 
             int Y, Cb, Cr;
-#if 0   // 
-            //ITU-R BT.709
+#if 0   //
+        // ITU-R BT.709
             Y = 16 + 0.183*R + 0.614*G + 0.062*B;
             Cb = 128 - 0.101*R - 0.339*G + 0.439*B;
             Cr = 128 + (0.439*R - 0.399*G - 0.040*B);
@@ -575,8 +622,10 @@ void bilinear_interpolate_color(int bayer_pattern, int width, int height, char *
         fix_endian(raw_buf, width, height);
 
     clock_t start = clock();
-    struct awb_info awbi = awb_grayworld(raw_buf, width, height, filters);
-
+    struct awb_info awbi;
+#ifndef NO_AWB
+    awbi = awb_grayworld(raw_buf, width, height, filters);
+#endif
     if (ofmt == FMT_RGB)
     {
         unsigned char *rgb_buf = malloc(insize * 3);
