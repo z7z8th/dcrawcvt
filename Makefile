@@ -69,7 +69,7 @@ gcov: dcrawcvt
 	./dcrawcvt -g 1920x1080 -f YUYV -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 
 clean:
-	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png
+	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png a.bmp
 	-@rm -vf dcrawcvt
 	-@rm -vf *.o *.exe
 	-@rm -vf perf.data*
