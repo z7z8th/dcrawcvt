@@ -190,6 +190,12 @@ struct awb_info awb_grayworld(unsigned char *raw_buf, int width, int height, uns
 }
 
 #ifndef NO_RGB_INTERPOLATE
+
+// r strip g strip b strip pattern is show along white and gray italic edge.
+// more complicated interpolate algorithm is necessary to eliminate this effect.
+
+
+// this function is RG pattern only
 void bilinear_interpolate_rgb(unsigned char *raw_buf, int width, int height, unsigned char *rgb_buf)
 {
     printf("bilinear_interpolate_rgb\n");
