@@ -32,6 +32,11 @@ torgb: dcrawcvt
 	$(MAGICK) convert -depth 8 -size 1920x1080+0 rgb:a.rgb a.png
 	$(OPEN) a.png
 
+tobmp: dcrawcvt
+	time ./dcrawcvt -g 1920x1080 -f UYVY -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
+	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.bmp
+	$(OPEN) a.bmp
+
 touyvy: dcrawcvt
 	./dcrawcvt -g 1920x1080 -f UYVY -b $(or $(BAYER),RG) $(RAW_FILE) a.yuv
 	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
