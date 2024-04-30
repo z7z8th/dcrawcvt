@@ -27,52 +27,67 @@ else
 OPEN = open
 endif
 
+OPT_SUFFIX = $(subst $() $(),_,$(OPT))
+FILE_BASE = $(patsubst %.raw,%,$(basename $(notdir $(RAW_FILE))))-$(subst $() $(),_,$(MAKECMDGOALS))$(OPT_SUFFIX)
+YUV_FILE = $(FILE_BASE).yuv
+
+$(warning $(basename $(RAW_FILE)))
+$(warning $(FILE_BASE))
+
 torgb: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f RGB $(OPTIONS) $(and $(FIX_ENDIAN),-e) $(RAW_FILE) a.rgb
-	$(MAGICK) convert -depth 8 -size 1920x1080+0 rgb:a.rgb a.png
-	$(OPEN) a.png
+	$(eval override OPT := $(subst -s,,$(OPT)))
+	./dcrawcvt -g 1920x1080 -f RGB $(OPT) $(RAW_FILE) $(FILE_BASE).rgb
+	$(MAGICK) convert -depth 8 -size 1920x1080+0 rgb:$(FILE_BASE).rgb $(FILE_BASE).png
+	$(OPEN) $(FILE_BASE).png
 
 tobmp: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f UYVY $(OPTIONS) $(RAW_FILE) a.yuv
-	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.bmp
-	$(OPEN) a.bmp
+	time ./dcrawcvt -g 1920x1080 -f UYVY $(OPT) $(RAW_FILE) $(YUV_FILE)
+ifeq ($(findstring -s,$(OPT)),)
+	$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:$(YUV_FILE) $(FILE_BASE).bmp
+else
+	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 960x540+0 pal:$(YUV_FILE) $(FILE_BASE).bmp
+endif
+	$(OPEN) $(FILE_BASE).bmp
 
 touyvy: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f UYVY $(OPTIONS) $(RAW_FILE) a.yuv
-	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:a.yuv a.png
-	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 960x540+0 pal:a.yuv a.png
-	$(OPEN) a.png
+	./dcrawcvt -g 1920x1080 -f UYVY $(OPT) $(RAW_FILE) $(YUV_FILE)
+ifeq ($(findstring -s,$(OPT)),)
+	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 1920x1080+0 pal:$(YUV_FILE) $(FILE_BASE).png
+else
+	-$(MAGICK) convert -depth 8 -colorspace YCbCr -sampling-factor 4:2:2 -size 960x540+0 pal:$(YUV_FILE) $(FILE_BASE).png
+endif
+	$(OPEN) $(FILE_BASE).png
 topal: touyvy
 
 toyuyv: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
-	$(OPEN) a.yuv
+	time ./dcrawcvt -g 1920x1080 -f YUYV $(OPT) $(RAW_FILE) $(YUV_FILE)
+	$(OPEN) $(YUV_FILE)
 toyuv422:toyuyv
 
 toyuvp: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVP $(OPTIONS) $(RAW_FILE) a.yuv
-	$(OPEN) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVP $(OPT) $(RAW_FILE) $(YUV_FILE)
+	$(OPEN) $(YUV_FILE)
 
 toyuvpi: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUVPI $(OPTIONS) $(RAW_FILE) a.yuv
-	$(OPEN) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUVPI $(OPT) $(RAW_FILE) $(YUV_FILE)
+	$(OPEN) $(YUV_FILE)
 
 tomjpeg: dcrawcvt
-	time ./dcrawcvt -g 1920x1080 -f MJPEG $(OPTIONS) $(RAW_FILE) a.jpeg
-	$(OPEN) a.jpeg
+	time ./dcrawcvt -g 1920x1080 -f MJPEG $(OPT) $(RAW_FILE) $(FILE_BASE).jpeg
+	$(OPEN) $(FILE_BASE).jpeg
 
 perf: dcrawcvt
-	perf record -- ./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
+	perf record -- ./dcrawcvt -g 1920x1080 -f YUYV $(OPT) $(RAW_FILE) $(YUV_FILE)
 
 gcov: CFLAGS += -fprofile-arcs -ftest-coverage
 gcov: LDFLAGS += -lgcov --coverage
 gcov: dcrawcvt
-	./dcrawcvt -g 1920x1080 -f YUYV $(OPTIONS) $(RAW_FILE) a.yuv
+	./dcrawcvt -g 1920x1080 -f YUYV $(OPT) $(RAW_FILE) $(YUV_FILE)
 
 clean:
-	-@rm -vf a.rgb a.yuv a.jpeg a.jpg a.png a.bmp
+	-@rm -vf *.rgb *.yuv *.jpeg *.jpg *.png *.bmp
 	-@rm -vf dcrawcvt
-	-@rm -vf *.o *.exe
+	-@rm -vf *.o *.exe *.list
 	-@rm -vf perf.data*
 	-@rm -vf *.gcda *.gcno *.gcov
 

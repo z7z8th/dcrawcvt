@@ -5,6 +5,7 @@
 *.jpg
 *.bmp
 *.yuv
+*.list
 
 dcrawcvt
 dcrawcvt.exe
