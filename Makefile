@@ -31,8 +31,7 @@ OPT_SUFFIX = $(subst $() $(),_,$(OPT))
 FILE_BASE = $(patsubst %.raw,%,$(basename $(notdir $(RAW_FILE))))-$(subst $() $(),_,$(MAKECMDGOALS))$(OPT_SUFFIX)
 YUV_FILE = $(FILE_BASE).yuv
 
-$(warning $(basename $(RAW_FILE)))
-$(warning $(FILE_BASE))
+# $(warning $(FILE_BASE))
 
 torgb: dcrawcvt
 	$(eval override OPT := $(subst -s,,$(OPT)))
