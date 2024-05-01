@@ -133,11 +133,9 @@ int tje_encode_to_file(const char* dest_path,
 //
 //  PARAMETERS
 //      dest_path:          filename to which we will write. e.g. "out.jpg"
-//      quality:            3: Highest. Compression varies wildly (between 1/3 and 1/20).
-//                          2: Very good quality. About 1/2 the size of 3.
-//                          1: Noticeable. About 1/6 the size of 3, or 1/3 the size of 2.
+//      quality:            0-6, lowest to highest
 //      width, height:      image size in pixels
-//      src_fmt:     3 is RGB. 4 is RGBA. TJE_FMT_*YUV*. Those are the only supported values
+//      src_fmt:            3 is RGB. 4 is RGBA. TJE_FMT_*YUV*. Those are the only supported values
 //      src_data:           pointer to the pixel data.
 //
 //  RETURN:
@@ -962,7 +960,7 @@ static int tjei_encode_main(TJEState* state,
 {
     int src_num_components;
     int planar_u_base = 0, planar_v_base = 0;
-    
+
     if (src_fmt == 3 || src_fmt == 4) {
         src_num_components = src_fmt;
     } else if (src_fmt & TJE_FMT_YUV) {
@@ -1271,14 +1269,15 @@ int tje_encode_with_func(tje_write_func* func,
                          const int src_fmt,
                          const unsigned char* src_data)
 {
-    if (quality < 1 || quality > 3) {
-        tje_log("[ERROR] -- Valid 'quality' values are 1 (lowest), 2, or 3 (highest)\n");
+    if (quality < 0 || quality > 6) {
+        tje_log("[ERROR] -- Valid 'quality' values are 0 (lowest) to 6 (highest)\n");
         return 0;
     }
 
     TJEState state = { 0 };
 
     uint8_t qt_factor = 1;
+#if 0
     switch(quality) {
     case 3:
         for ( int i = 0; i < 64; ++i ) {
@@ -1287,7 +1286,7 @@ int tje_encode_with_func(tje_write_func* func,
         }
         break;
     case 2:
-        qt_factor = 10;
+        qt_factor = 8;
         // don't break. fall through.
     case 1:
         for ( int i = 0; i < 64; ++i ) {
@@ -1304,6 +1303,18 @@ int tje_encode_with_func(tje_write_func* func,
     default:
         assert(!"invalid code path");
         break;
+    }
+#endif
+    qt_factor = 1 << quality;
+    for ( int i = 0; i < 64; ++i ) {
+        state.qt_luma[i]   = tjei_default_qt_luma_from_spec[i] / qt_factor;
+        if (state.qt_luma[i] == 0) {
+            state.qt_luma[i] = 1;
+        }
+        state.qt_chroma[i] = tjei_default_qt_chroma_from_paper[i] / qt_factor;
+        if (state.qt_chroma[i] == 0) {
+            state.qt_chroma[i] = 1;
+        }
     }
 
     TJEWriteContext wc = { 0 };
