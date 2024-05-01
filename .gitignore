@@ -3,13 +3,13 @@
 *.png
 *.jpeg
 *.jpg
+*.mjpeg
 *.bmp
 *.yuv
 *.list
 
 dcrawcvt
 dcrawcvt.exe
-.vscode/settings.json
 perf.data
 perf.data.old
 *.gcda
