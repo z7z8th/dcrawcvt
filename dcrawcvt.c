@@ -158,26 +158,30 @@ awb_grayworld(unsigned char* raw_buf, int width, int height, unsigned filters)
     unsigned avgG = 0;
     unsigned avgB = 0;
 
-    int off = 0;
-    for (int row = 0; row < height; row++) {
-        for (int col = 0; col < width; col++) {
-            unsigned pix = RAWI(off);
-            int fc = FC(row, col);
+    int istep = 4;
+    int step = 1<<istep;
 
-            if (fc == RAWC_RED)
-                avgR += pix;
-            else if (fc == RAWC_BLUE)
-                avgB += pix;
-            else
-                avgG += pix;
+    for (int row = 0; row < height; row+=step) {
+        for (int col = 0; col < width; col+=2) {
 
-            off++;
+            unsigned char pix[4];
+            for (int i = 0; i < 4; i++) {
+                int c = (filters >> (i << 1)) & 3;
+                pix[c] = RAW(row + (i >> 1), col + (i & 1));
+                // printf("pix[%d] = %d\n", c, pix[c]);
+            }
+
+            avgR += pix[RAWC_RED];
+            avgB += pix[RAWC_BLUE];
+            avgG += pix[RAWC_GREEN] + pix[RAWC_GREEN2];
         }
     }
 
-    avgR /= pix_cnt >> 2;
-    avgG /= pix_cnt >> 1;
-    avgB /= pix_cnt >> 2;
+    printf("Grayworld AWB, Sum R/G/B %d/%d/%d\n", avgR, avgG, avgB);
+
+    avgR /= pix_cnt >> (2+istep);
+    avgG /= pix_cnt >> (1+istep);
+    avgB /= pix_cnt >> (2+istep);
 
     unsigned vmax;
     // vmax = isqrt(avgR * avgR + avgG * avgG + avgB * avgB);

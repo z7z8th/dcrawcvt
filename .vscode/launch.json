@@ -12,6 +12,7 @@
             // "args": ["-q", "2", "../raw-images/CRW_7673.CRW"],
             // "args": [ "-g", "1920x1080", "-b", "RG", "-f", "MJPEG", "../1920_1080_raw8_r12_0x1fa400_fixed.raw", "a.jpeg"],
             "args": [ "-g", "1920x1080", "-b", "RG", "-f", "YUYV", "-s", "../1920_1080_raw8_r12_0x1fa400_fixed.raw", "a.yuv"],
+            // "args": [ "-g", "640x360", "-b", "RG", "-f", "YUYV", "-s", "../640_360_ddr_3.raw", "a.yuv"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
