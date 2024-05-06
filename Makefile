@@ -32,7 +32,7 @@ RAWFILE_BASE = $(basename $(notdir $(RAW_FILE)))
 FILE_BASE = $(patsubst %.raw,%,$(RAWFILE_BASE))-$(subst $() $(),_,$(MAKECMDGOALS))$(OPT_SUFFIX)
 YUV_FILE = $(FILE_BASE).yuv
 
-GEOMETRY = $(shell echo "$(RAWFILE_BASE)" | awk '{ \
+GEOMETRY = $(shell echo "$(RAWFILE_BASE)" | gawk '{ \
 	where = match($$0,"[0-9]{3,4}[x_][0-9]{3,4}"); \
 	if (RLENGTH < 0) \
 		exit; \
