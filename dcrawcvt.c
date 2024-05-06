@@ -158,7 +158,7 @@ awb_grayworld(unsigned char* raw_buf, int width, int height, unsigned filters)
     unsigned avgG = 0;
     unsigned avgB = 0;
 
-    int istep = 4;
+    int istep = 3;
     int step = 1<<istep;
 
     for (int row = 0; row < height; row+=step) {
