@@ -823,7 +823,8 @@ void usage(char* argv[])
         "                   interleaved), UYVY/PAL(packed), RGB(24 bits), MJPEG\n"
         "-e                 endian fix, reverse every 8 bytes\n"
         "-s                 super pixel, no interpolation, output geometry is W/2xH/2\n"
-        "-n                 no auto whitebalance",
+        "-n                 no auto whitebalance"
+        "\n",
         argv[0]);
     exit(EXIT_FAILURE);
 }
@@ -837,7 +838,7 @@ int main(int argc, char* argv[])
     int output_format = 0;
     int super_pix = 0;
 
-    while ((opt = getopt(argc, argv, "r:b:g:f:esn")) != -1) {
+    while ((opt = getopt(argc, argv, "r:b:g:f:esnh")) != -1) {
         switch (opt) {
         case 'r':
 #warning only 8 bit width implemented, TODO: 10, 12, 14, 16 bit
@@ -861,10 +862,25 @@ int main(int argc, char* argv[])
         case 'n':
             no_awb = 1;
             break;
+        case 'h':
         default: /* '?' */
             usage(argv);
         }
     }
+
+    if (optind >= argc) {
+        fprintf(stderr, "Expected input file after options\n\n");
+        usage(argv);
+        exit(EXIT_FAILURE);
+    }
+    printf("input file = %s\n", argv[optind]);
+
+    if (optind + 1 >= argc) {
+        fprintf(stderr, "Expected output file after options\n\n");
+        usage(argv);
+        exit(EXIT_FAILURE);
+    }
+    printf("output file = %s\n", argv[optind + 1]);
 
     printf("debayer pattern %d\n", bayer_pattern);
     printf("w %d h %d\n", width, height);
@@ -874,18 +890,6 @@ int main(int argc, char* argv[])
         printf("invalid geometry\n");
         exit(EXIT_FAILURE);
     }
-
-    if (optind >= argc) {
-        fprintf(stderr, "Expected input file after options\n");
-        exit(EXIT_FAILURE);
-    }
-    printf("input file = %s\n", argv[optind]);
-
-    if (optind + 1 >= argc) {
-        fprintf(stderr, "Expected output file after options\n");
-        exit(EXIT_FAILURE);
-    }
-    printf("output file = %s\n", argv[optind + 1]);
 
     char* infile = argv[optind];
     char* outfile = argv[optind + 1];
